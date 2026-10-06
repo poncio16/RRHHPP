@@ -1,0 +1,1094 @@
+// Modelo de datos del Sistema de Gestión de Personal.
+// Diseño y criterios: docs/arquitectura.md (sección 5).
+//
+// Convenciones:
+// - IDs UUID v7, tablas y columnas en snake_case.
+// - Fechas de calendario como DATE; instantes como TIMESTAMPTZ.
+// - Importes NUMERIC(14,2).
+// - created_by_id / updated_by_id sin FK: el rastro completo está en audit_log
+//   y los usuarios nunca se borran físicamente.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Enums (estados que interpreta el código; no administrables)
+// ============================================================
+
+enum EmployeeStatus {
+  ACTIVO
+  EGRESADO
+}
+
+enum Sex {
+  F
+  M
+  X
+}
+
+enum LeaveClass {
+  LICENCIA
+  AUSENCIA
+  VACACIONES
+  SUSPENSION
+}
+
+enum CountingMode {
+  CORRIDOS
+  HABILES
+}
+
+enum LeaveStatus {
+  SOLICITADA
+  APROBADA
+  RECHAZADA
+  ANULADA
+}
+
+enum AttendanceStatus {
+  PRESENTE
+  AUSENTE
+  JUSTIFICADO
+  FRANCO
+  FERIADO
+}
+
+enum RecordSource {
+  MANUAL
+  IMPORT
+}
+
+enum DocumentStatus {
+  PENDIENTE
+  PRESENTADO
+  OBSERVADO
+  ANULADO
+}
+
+enum ConceptNature {
+  HABER
+  DESCUENTO
+  INFORMATIVO
+}
+
+enum SalaryConceptKind {
+  BASICO
+  ADICIONAL
+  BONIFICACION
+  PREMIO
+  HORAS_EXTRAS
+  OTRO
+}
+
+enum NoveltyStatus {
+  PENDIENTE
+  APROBADA
+  INFORMADA
+  ANULADA
+}
+
+enum ExitStatus {
+  EN_TRAMITE
+  CONFIRMADO
+  ANULADO
+}
+
+enum ChangeType {
+  PUESTO
+  SECTOR
+  CATEGORIA
+  JORNADA
+  HORARIO
+  MODALIDAD
+  ESTABLECIMIENTO
+  CONTRATACION
+  CONVENIO
+  SUPERIOR
+  DATOS_BANCARIOS
+  REINGRESO
+  OTRO
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  SOFT_DELETE
+  DELETE
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  PERMISSION_CHANGE
+  EXPORT
+  IMPORT
+  FILE_DOWNLOAD
+  ACCESS_DENIED
+}
+
+enum AuditResult {
+  SUCCESS
+  FAILURE
+  DENIED
+}
+
+enum ImportType {
+  EMPLOYEES
+}
+
+enum ImportStatus {
+  VALIDADO
+  CONFIRMADO
+  DESCARTADO
+}
+
+// ============================================================
+// Seguridad
+// ============================================================
+
+model User {
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  email              String    @unique
+  name               String
+  passwordHash       String    @map("password_hash")
+  roleId             String    @map("role_id") @db.Uuid
+  isActive           Boolean   @default(true) @map("is_active")
+  mustChangePassword Boolean   @default(true) @map("must_change_password")
+  failedLoginCount   Int       @default(0) @map("failed_login_count")
+  lockedUntil        DateTime? @map("locked_until") @db.Timestamptz
+  lastLoginAt        DateTime? @map("last_login_at") @db.Timestamptz
+  employeeId         String?   @unique @map("employee_id") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  role     Role      @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  employee Employee? @relation("UserEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  sessions Session[]
+
+  auditLogs       AuditLog[]
+  changeHistory   EmployeeChangeHistory[]
+  salaryHistory   SalaryHistory[]
+  requestedLeaves LeaveRecord[]           @relation("LeaveRequestedBy")
+  decidedLeaves   LeaveRecord[]           @relation("LeaveDecidedBy")
+  novelties       Novelty[]
+  confirmedExits  EmployeeExit[]
+  uploadedFiles   StoredFile[]
+  importJobs      ImportJob[]
+  alertDismissals AlertDismissal[]
+
+  @@index([roleId])
+  @@map("user")
+}
+
+model Role {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("role")
+}
+
+/// El catálogo de permisos vive en código (src/server/authz/permissions.ts).
+model RolePermission {
+  roleId     String @map("role_id") @db.Uuid
+  permission String
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permission])
+  @@map("role_permission")
+}
+
+model Session {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  userId     String    @map("user_id") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  ip         String?
+  userAgent  String?   @map("user_agent")
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("session")
+}
+
+// ============================================================
+// Empresa y configuración
+// ============================================================
+
+/// Fila única con los datos de la empresa.
+model Company {
+  id                   String   @id @default(uuid(7)) @db.Uuid
+  legalName            String   @map("legal_name")
+  tradeName            String?  @map("trade_name")
+  cuit                 String   @unique
+  addressLine          String?  @map("address_line")
+  city                 String?
+  provinceId           String?  @map("province_id") @db.Uuid
+  postalCode           String?  @map("postal_code")
+  timezone             String   @default("America/Argentina/Buenos_Aires")
+  defaultArtProviderId String?  @map("default_art_provider_id") @db.Uuid
+  defaultWorkplaceId   String?  @map("default_workplace_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById          String?  @map("updated_by_id") @db.Uuid
+
+  province           Province?    @relation(fields: [provinceId], references: [id], onDelete: Restrict)
+  defaultArtProvider ArtProvider? @relation(fields: [defaultArtProviderId], references: [id], onDelete: SetNull)
+  defaultWorkplace   Workplace?   @relation("CompanyDefaultWorkplace", fields: [defaultWorkplaceId], references: [id], onDelete: SetNull)
+
+  @@map("company")
+}
+
+/// Parámetros generales. Cada clave se valida con un esquema Zod en código.
+model Setting {
+  key         String   @id
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  @@map("setting")
+}
+
+model Province {
+  id   String @id @default(uuid(7)) @db.Uuid
+  code String @unique
+  name String @unique
+
+  companies  Company[]
+  workplaces Workplace[]
+  employees  Employee[]
+
+  @@map("province")
+}
+
+model Holiday {
+  id                   String   @id @default(uuid(7)) @db.Uuid
+  date                 DateTime @unique @db.Date
+  name                 String
+  isNonWorkingOptional Boolean  @default(false) @map("is_non_working_optional")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("holiday")
+}
+
+/// Listas simples sin atributos propios. Grupos: ESTADO_CIVIL, NACIONALIDAD,
+/// MODALIDAD_TRABAJO, TIPO_CUENTA_BANCARIA, TIPO_EGRESO, MOTIVO_EGRESO.
+model LookupValue {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  group     String
+  code      String
+  label     String
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  employeesByNationality   Employee[]            @relation("EmployeeNationality")
+  employeesByMaritalStatus Employee[]            @relation("EmployeeMaritalStatus")
+  employeesByWorkModality  Employee[]            @relation("EmployeeWorkModality")
+  schedulesByWorkModality  WorkSchedule[]
+  bankAccounts             EmployeeBankAccount[]
+  exitsByType              EmployeeExit[]        @relation("ExitType")
+  exitsByReason            EmployeeExit[]        @relation("ExitReason")
+
+  @@unique([group, code])
+  @@index([group, isActive])
+  @@map("lookup_value")
+}
+
+// ============================================================
+// Estructura organizacional
+// ============================================================
+
+model Department {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String   @unique
+  code        String?  @unique
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  positions Position[]
+  employees Employee[]
+
+  @@map("department")
+}
+
+model Position {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  name         String   @unique
+  departmentId String?  @map("department_id") @db.Uuid
+  isActive     Boolean  @default(true) @map("is_active")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById  String?  @map("created_by_id") @db.Uuid
+  updatedById  String?  @map("updated_by_id") @db.Uuid
+
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  employees  Employee[]
+
+  @@index([departmentId])
+  @@map("position")
+}
+
+model CollectiveAgreement {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String
+  number      String?  @unique
+  unionName   String?  @map("union_name")
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  categories Category[]
+  employees  Employee[]
+
+  @@map("collective_agreement")
+}
+
+model Category {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String
+  agreementId String?  @map("agreement_id") @db.Uuid
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  agreement CollectiveAgreement? @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  employees Employee[]
+
+  @@unique([agreementId, name])
+  @@map("category")
+}
+
+model Workplace {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String   @unique
+  addressLine String?  @map("address_line")
+  city        String?
+  provinceId  String?  @map("province_id") @db.Uuid
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  province           Province?  @relation(fields: [provinceId], references: [id], onDelete: Restrict)
+  employees          Employee[]
+  companiesAsDefault Company[]  @relation("CompanyDefaultWorkplace")
+
+  @@map("workplace")
+}
+
+model ContractType {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String   @unique
+  hasEndDate  Boolean  @default(false) @map("has_end_date")
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  employees Employee[]
+
+  @@map("contract_type")
+}
+
+/// Jornada: completa, parcial, reducida, etc.
+model WorkdayType {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String   @unique
+  weeklyHours Decimal  @map("weekly_hours") @db.Decimal(5, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  employees Employee[]
+
+  @@map("workday_type")
+}
+
+/// Horario o turno, con el detalle por día de la semana.
+model WorkSchedule {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  name           String   @unique
+  weeklyHours    Decimal  @map("weekly_hours") @db.Decimal(5, 2)
+  workModalityId String?  @map("work_modality_id") @db.Uuid
+  isActive       Boolean  @default(true) @map("is_active")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById    String?  @map("created_by_id") @db.Uuid
+  updatedById    String?  @map("updated_by_id") @db.Uuid
+
+  workModality LookupValue?      @relation(fields: [workModalityId], references: [id], onDelete: Restrict)
+  days         WorkScheduleDay[]
+  employees    Employee[]
+
+  @@map("work_schedule")
+}
+
+model WorkScheduleDay {
+  id              String  @id @default(uuid(7)) @db.Uuid
+  scheduleId      String  @map("schedule_id") @db.Uuid
+  /// 1 = lunes … 7 = domingo (ISO 8601)
+  dayOfWeek       Int     @map("day_of_week") @db.SmallInt
+  /// Formato HH:mm
+  startTime       String  @map("start_time") @db.VarChar(5)
+  endTime         String  @map("end_time") @db.VarChar(5)
+  breakMinutes    Int     @default(0) @map("break_minutes")
+  crossesMidnight Boolean @default(false) @map("crosses_midnight")
+
+  schedule WorkSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, dayOfWeek])
+  @@map("work_schedule_day")
+}
+
+model HealthInsurer {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String
+  rnosCode    String?  @unique @map("rnos_code")
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  employees Employee[]
+
+  @@map("health_insurer")
+}
+
+model ArtProvider {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String   @unique
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  employees          Employee[]
+  companiesAsDefault Company[]
+
+  @@map("art_provider")
+}
+
+model Bank {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String
+  /// Código de 3 dígitos con el que empieza el CBU.
+  code        String   @unique @db.VarChar(3)
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  bankAccounts EmployeeBankAccount[]
+
+  @@map("bank")
+}
+
+// ============================================================
+// Legajo
+// ============================================================
+
+model Employee {
+  id         String @id @default(uuid(7)) @db.Uuid
+  fileNumber Int    @unique @map("file_number")
+
+  // Datos personales
+  lastName        String   @map("last_name")
+  firstName       String   @map("first_name")
+  dni             String   @unique @db.VarChar(8)
+  cuil            String   @unique @db.VarChar(11)
+  birthDate       DateTime @map("birth_date") @db.Date
+  nationalityId   String?  @map("nationality_id") @db.Uuid
+  maritalStatusId String?  @map("marital_status_id") @db.Uuid
+  sex             Sex
+
+  // Contacto
+  addressLine           String  @map("address_line")
+  city                  String
+  provinceId            String  @map("province_id") @db.Uuid
+  postalCode            String  @map("postal_code") @db.VarChar(8)
+  phone                 String?
+  email                 String?
+  emergencyContactName  String? @map("emergency_contact_name")
+  emergencyContactPhone String? @map("emergency_contact_phone")
+
+  // Datos laborales
+  hireDate        DateTime       @map("hire_date") @db.Date
+  /// Fecha de antigüedad reconocida (puede diferir de hire_date por reingresos).
+  seniorityDate   DateTime       @map("seniority_date") @db.Date
+  contractEndDate DateTime?      @map("contract_end_date") @db.Date
+  exitDate        DateTime?      @map("exit_date") @db.Date
+  status          EmployeeStatus @default(ACTIVO)
+  departmentId    String         @map("department_id") @db.Uuid
+  positionId      String         @map("position_id") @db.Uuid
+  categoryId      String?        @map("category_id") @db.Uuid
+  contractTypeId  String         @map("contract_type_id") @db.Uuid
+  workdayTypeId   String?        @map("workday_type_id") @db.Uuid
+  workScheduleId  String?        @map("work_schedule_id") @db.Uuid
+  workModalityId  String?        @map("work_modality_id") @db.Uuid
+  agreementId     String?        @map("agreement_id") @db.Uuid
+  healthInsurerId String?        @map("health_insurer_id") @db.Uuid
+  artProviderId   String?        @map("art_provider_id") @db.Uuid
+  workplaceId     String         @map("workplace_id") @db.Uuid
+  supervisorId    String?        @map("supervisor_id") @db.Uuid
+
+  // Control
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  nationality   LookupValue?         @relation("EmployeeNationality", fields: [nationalityId], references: [id], onDelete: Restrict)
+  maritalStatus LookupValue?         @relation("EmployeeMaritalStatus", fields: [maritalStatusId], references: [id], onDelete: Restrict)
+  province      Province             @relation(fields: [provinceId], references: [id], onDelete: Restrict)
+  department    Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position      Position             @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  category      Category?            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  contractType  ContractType         @relation(fields: [contractTypeId], references: [id], onDelete: Restrict)
+  workdayType   WorkdayType?         @relation(fields: [workdayTypeId], references: [id], onDelete: Restrict)
+  workSchedule  WorkSchedule?        @relation(fields: [workScheduleId], references: [id], onDelete: Restrict)
+  workModality  LookupValue?         @relation("EmployeeWorkModality", fields: [workModalityId], references: [id], onDelete: Restrict)
+  agreement     CollectiveAgreement? @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  healthInsurer HealthInsurer?       @relation(fields: [healthInsurerId], references: [id], onDelete: Restrict)
+  artProvider   ArtProvider?         @relation(fields: [artProviderId], references: [id], onDelete: Restrict)
+  workplace     Workplace            @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+  supervisor    Employee?            @relation("EmployeeSupervisor", fields: [supervisorId], references: [id], onDelete: Restrict)
+  subordinates  Employee[]           @relation("EmployeeSupervisor")
+
+  user             User?                   @relation("UserEmployee")
+  bankAccount      EmployeeBankAccount?
+  changeHistory    EmployeeChangeHistory[]
+  salaryHistory    SalaryHistory[]
+  payrollRecords   PayrollRecord[]
+  leaveRecords     LeaveRecord[]
+  vacationBalances VacationBalance[]
+  attendanceDays   AttendanceDay[]
+  documents        Document[]
+  novelties        Novelty[]
+  exits            EmployeeExit[]
+
+  @@index([status])
+  @@index([departmentId])
+  @@index([positionId])
+  @@index([workplaceId])
+  @@index([hireDate])
+  @@index([lastName, firstName])
+  @@map("employee")
+}
+
+/// Separada del legajo para controlar el acceso a datos bancarios.
+model EmployeeBankAccount {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  employeeId    String   @unique @map("employee_id") @db.Uuid
+  bankId        String   @map("bank_id") @db.Uuid
+  cbu           String   @db.VarChar(22)
+  alias         String?
+  accountTypeId String   @map("account_type_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById   String?  @map("created_by_id") @db.Uuid
+  updatedById   String?  @map("updated_by_id") @db.Uuid
+
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  bank        Bank        @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  accountType LookupValue @relation(fields: [accountTypeId], references: [id], onDelete: Restrict)
+
+  @@map("employee_bank_account")
+}
+
+/// Historial laboral: dato de negocio con fecha efectiva.
+model EmployeeChangeHistory {
+  id            String     @id @default(uuid(7)) @db.Uuid
+  employeeId    String     @map("employee_id") @db.Uuid
+  /// Agrupa los campos modificados en una misma operación.
+  changeSetId   String     @map("change_set_id") @db.Uuid
+  changeType    ChangeType @map("change_type")
+  field         String
+  oldValue      String?    @map("old_value")
+  newValue      String?    @map("new_value")
+  oldRefId      String?    @map("old_ref_id") @db.Uuid
+  newRefId      String?    @map("new_ref_id") @db.Uuid
+  effectiveDate DateTime   @map("effective_date") @db.Date
+  notes         String?
+  createdById   String     @map("created_by_id") @db.Uuid
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, effectiveDate])
+  @@index([changeSetId])
+  @@map("employee_change_history")
+}
+
+// ============================================================
+// Remuneraciones (registro informado, no liquidación)
+// ============================================================
+
+model SalaryConceptType {
+  id          String            @id @default(uuid(7)) @db.Uuid
+  name        String            @unique
+  nature      ConceptNature
+  kind        SalaryConceptKind
+  isActive    Boolean           @default(true) @map("is_active")
+  sortOrder   Int               @default(0) @map("sort_order")
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?           @map("created_by_id") @db.Uuid
+  updatedById String?           @map("updated_by_id") @db.Uuid
+
+  lines PayrollRecordLine[]
+
+  @@map("salary_concept_type")
+}
+
+/// Condición salarial pactada (básico vigente) con fecha efectiva.
+model SalaryHistory {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  employeeId    String   @map("employee_id") @db.Uuid
+  effectiveDate DateTime @map("effective_date") @db.Date
+  basicSalary   Decimal  @map("basic_salary") @db.Decimal(14, 2)
+  notes         String?
+  createdById   String   @map("created_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, effectiveDate])
+  @@map("salary_history")
+}
+
+/// Resumen mensual informado por el sistema de liquidación de la empresa.
+model PayrollRecord {
+  id                 String       @id @default(uuid(7)) @db.Uuid
+  employeeId         String       @map("employee_id") @db.Uuid
+  /// Primer día del mes del período.
+  period             DateTime     @db.Date
+  source             RecordSource @default(MANUAL)
+  grossReported      Decimal      @map("gross_reported") @db.Decimal(14, 2)
+  deductionsReported Decimal      @map("deductions_reported") @db.Decimal(14, 2)
+  netReported        Decimal      @map("net_reported") @db.Decimal(14, 2)
+  notes              String?
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  createdById        String?      @map("created_by_id") @db.Uuid
+  updatedById        String?      @map("updated_by_id") @db.Uuid
+
+  employee Employee            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  lines    PayrollRecordLine[]
+
+  @@unique([employeeId, period])
+  @@index([period])
+  @@map("payroll_record")
+}
+
+model PayrollRecordLine {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  payrollRecordId String   @map("payroll_record_id") @db.Uuid
+  conceptTypeId   String   @map("concept_type_id") @db.Uuid
+  description     String?
+  quantity        Decimal? @db.Decimal(10, 2)
+  amount          Decimal  @db.Decimal(14, 2)
+
+  payrollRecord PayrollRecord     @relation(fields: [payrollRecordId], references: [id], onDelete: Cascade)
+  conceptType   SalaryConceptType @relation(fields: [conceptTypeId], references: [id], onDelete: Restrict)
+
+  @@index([payrollRecordId])
+  @@map("payroll_record_line")
+}
+
+// ============================================================
+// Licencias, ausencias, vacaciones y suspensiones
+// ============================================================
+
+model LeaveType {
+  id                     String       @id @default(uuid(7)) @db.Uuid
+  name                   String       @unique
+  class                  LeaveClass
+  countingMode           CountingMode @map("counting_mode")
+  isPaid                 Boolean      @default(true) @map("is_paid")
+  requiresCertificate    Boolean      @default(false) @map("requires_certificate")
+  /// Avisos configurables, no bloqueos rígidos.
+  maxDaysPerEvent        Int?         @map("max_days_per_event")
+  maxDaysPerYear         Int?         @map("max_days_per_year")
+  countsForAbsenteeism   Boolean      @default(false) @map("counts_for_absenteeism")
+  isSensitive            Boolean      @default(false) @map("is_sensitive")
+  generatesNoveltyTypeId String?      @map("generates_novelty_type_id") @db.Uuid
+  isActive               Boolean      @default(true) @map("is_active")
+  sortOrder              Int          @default(0) @map("sort_order")
+  createdAt              DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  createdById            String?      @map("created_by_id") @db.Uuid
+  updatedById            String?      @map("updated_by_id") @db.Uuid
+
+  generatesNoveltyType NoveltyType?  @relation(fields: [generatesNoveltyTypeId], references: [id], onDelete: SetNull)
+  records              LeaveRecord[]
+
+  @@map("leave_type")
+}
+
+model LeaveRecord {
+  id                String      @id @default(uuid(7)) @db.Uuid
+  employeeId        String      @map("employee_id") @db.Uuid
+  leaveTypeId       String      @map("leave_type_id") @db.Uuid
+  startDate         DateTime    @map("start_date") @db.Date
+  endDate           DateTime    @map("end_date") @db.Date
+  /// Calculado al guardar con el modo de conteo del tipo.
+  days              Int
+  status            LeaveStatus @default(SOLICITADA)
+  vacationBalanceId String?     @map("vacation_balance_id") @db.Uuid
+  requestedById     String      @map("requested_by_id") @db.Uuid
+  decidedById       String?     @map("decided_by_id") @db.Uuid
+  decidedAt         DateTime?   @map("decided_at") @db.Timestamptz
+  decisionNotes     String?     @map("decision_notes")
+  notes             String?
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById       String?     @map("updated_by_id") @db.Uuid
+
+  employee        Employee         @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  leaveType       LeaveType        @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  vacationBalance VacationBalance? @relation(fields: [vacationBalanceId], references: [id], onDelete: Restrict)
+  requestedBy     User             @relation("LeaveRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedBy       User?            @relation("LeaveDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+  documents       Document[]
+  attendanceDays  AttendanceDay[]
+
+  @@index([employeeId, startDate])
+  @@index([status, startDate])
+  @@index([leaveTypeId])
+  @@index([vacationBalanceId])
+  @@map("leave_record")
+}
+
+/// Regla parametrizable: días de vacaciones por rango de antigüedad.
+model VacationRule {
+  id                String       @id @default(uuid(7)) @db.Uuid
+  minSeniorityYears Int          @map("min_seniority_years")
+  maxSeniorityYears Int?         @map("max_seniority_years")
+  days              Int
+  countingMode      CountingMode @map("counting_mode")
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById       String?      @map("updated_by_id") @db.Uuid
+
+  @@unique([minSeniorityYears])
+  @@map("vacation_rule")
+}
+
+/// Saldo anual. Utilizados y pendientes se calculan por consulta.
+model VacationBalance {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  employeeId       String   @map("employee_id") @db.Uuid
+  year             Int
+  entitledDays     Int      @map("entitled_days")
+  adjustmentDays   Int      @default(0) @map("adjustment_days")
+  adjustmentReason String?  @map("adjustment_reason")
+  carriedOverDays  Int      @default(0) @map("carried_over_days")
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById      String?  @map("created_by_id") @db.Uuid
+  updatedById      String?  @map("updated_by_id") @db.Uuid
+
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  leaveRecords LeaveRecord[]
+
+  @@unique([employeeId, year])
+  @@map("vacation_balance")
+}
+
+// ============================================================
+// Asistencia
+// ============================================================
+
+model AttendanceDay {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  employeeId     String           @map("employee_id") @db.Uuid
+  /// Día de inicio del turno.
+  date           DateTime         @db.Date
+  checkIn        DateTime?        @map("check_in") @db.Timestamptz
+  checkOut       DateTime?        @map("check_out") @db.Timestamptz
+  breakMinutes   Int              @default(0) @map("break_minutes")
+  workedMinutes  Int              @default(0) @map("worked_minutes")
+  regularMinutes Int              @default(0) @map("regular_minutes")
+  extraMinutes   Int              @default(0) @map("extra_minutes")
+  lateMinutes    Int              @default(0) @map("late_minutes")
+  status         AttendanceStatus
+  leaveRecordId  String?          @map("leave_record_id") @db.Uuid
+  source         RecordSource     @default(MANUAL)
+  externalRef    String?          @map("external_ref")
+  notes          String?
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  createdById    String?          @map("created_by_id") @db.Uuid
+  updatedById    String?          @map("updated_by_id") @db.Uuid
+
+  employee    Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  leaveRecord LeaveRecord? @relation(fields: [leaveRecordId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, date])
+  @@index([date])
+  @@map("attendance_day")
+}
+
+// ============================================================
+// Documentación
+// ============================================================
+
+model DocumentType {
+  id                  String   @id @default(uuid(7)) @db.Uuid
+  name                String   @unique
+  requiresExpiry      Boolean  @default(false) @map("requires_expiry")
+  defaultValidityDays Int?     @map("default_validity_days")
+  isSensitive         Boolean  @default(false) @map("is_sensitive")
+  alertDaysBefore     Int?     @map("alert_days_before")
+  isActive            Boolean  @default(true) @map("is_active")
+  sortOrder           Int      @default(0) @map("sort_order")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById         String?  @map("created_by_id") @db.Uuid
+  updatedById         String?  @map("updated_by_id") @db.Uuid
+
+  documents Document[]
+
+  @@map("document_type")
+}
+
+model StoredFile {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  storageKey   String   @unique @map("storage_key")
+  originalName String   @map("original_name")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  sha256       String   @db.Char(64)
+  uploadedById String   @map("uploaded_by_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  uploadedBy User       @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  documents  Document[]
+
+  @@map("stored_file")
+}
+
+model Document {
+  id             String         @id @default(uuid(7)) @db.Uuid
+  employeeId     String         @map("employee_id") @db.Uuid
+  documentTypeId String         @map("document_type_id") @db.Uuid
+  issueDate      DateTime?      @map("issue_date") @db.Date
+  expiryDate     DateTime?      @map("expiry_date") @db.Date
+  status         DocumentStatus @default(PRESENTADO)
+  fileId         String?        @map("file_id") @db.Uuid
+  leaveRecordId  String?        @map("leave_record_id") @db.Uuid
+  exitId         String?        @map("exit_id") @db.Uuid
+  notes          String?
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  createdById    String?        @map("created_by_id") @db.Uuid
+  updatedById    String?        @map("updated_by_id") @db.Uuid
+
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  documentType DocumentType  @relation(fields: [documentTypeId], references: [id], onDelete: Restrict)
+  file         StoredFile?   @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  leaveRecord  LeaveRecord?  @relation(fields: [leaveRecordId], references: [id], onDelete: SetNull)
+  exit         EmployeeExit? @relation(fields: [exitId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([expiryDate])
+  @@index([documentTypeId])
+  @@map("document")
+}
+
+// ============================================================
+// Novedades
+// ============================================================
+
+model NoveltyType {
+  id               String        @id @default(uuid(7)) @db.Uuid
+  name             String        @unique
+  nature           ConceptNature
+  requiresAmount   Boolean       @default(false) @map("requires_amount")
+  requiresQuantity Boolean       @default(false) @map("requires_quantity")
+  quantityUnit     String?       @map("quantity_unit")
+  isActive         Boolean       @default(true) @map("is_active")
+  sortOrder        Int           @default(0) @map("sort_order")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  createdById      String?       @map("created_by_id") @db.Uuid
+  updatedById      String?       @map("updated_by_id") @db.Uuid
+
+  novelties  Novelty[]
+  leaveTypes LeaveType[]
+
+  @@map("novelty_type")
+}
+
+model Novelty {
+  id            String        @id @default(uuid(7)) @db.Uuid
+  employeeId    String        @map("employee_id") @db.Uuid
+  noveltyTypeId String        @map("novelty_type_id") @db.Uuid
+  date          DateTime      @db.Date
+  /// Primer día del mes del período.
+  period        DateTime      @db.Date
+  quantity      Decimal?      @db.Decimal(10, 2)
+  amount        Decimal?      @db.Decimal(14, 2)
+  status        NoveltyStatus @default(PENDIENTE)
+  /// Origen cuando la novedad se generó desde otro módulo.
+  sourceType    String?       @map("source_type")
+  sourceId      String?       @map("source_id") @db.Uuid
+  notes         String?
+  createdById   String        @map("created_by_id") @db.Uuid
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById   String?       @map("updated_by_id") @db.Uuid
+
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  noveltyType NoveltyType @relation(fields: [noveltyTypeId], references: [id], onDelete: Restrict)
+  createdBy   User        @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([employeeId])
+  @@index([period, status])
+  @@index([sourceType, sourceId])
+  @@map("novelty")
+}
+
+// ============================================================
+// Egresos
+// ============================================================
+
+model EmployeeExit {
+  id            String     @id @default(uuid(7)) @db.Uuid
+  employeeId    String     @map("employee_id") @db.Uuid
+  exitDate      DateTime   @map("exit_date") @db.Date
+  exitTypeId    String     @map("exit_type_id") @db.Uuid
+  exitReasonId  String     @map("exit_reason_id") @db.Uuid
+  status        ExitStatus @default(EN_TRAMITE)
+  notes         String?
+  confirmedById String?    @map("confirmed_by_id") @db.Uuid
+  confirmedAt   DateTime?  @map("confirmed_at") @db.Timestamptz
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  createdById   String?    @map("created_by_id") @db.Uuid
+  updatedById   String?    @map("updated_by_id") @db.Uuid
+
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  exitType    LookupValue @relation("ExitType", fields: [exitTypeId], references: [id], onDelete: Restrict)
+  exitReason  LookupValue @relation("ExitReason", fields: [exitReasonId], references: [id], onDelete: Restrict)
+  confirmedBy User?       @relation(fields: [confirmedById], references: [id], onDelete: Restrict)
+  documents   Document[]
+
+  @@index([employeeId])
+  @@index([exitDate])
+  @@map("employee_exit")
+}
+
+// ============================================================
+// Auditoría, importación y alertas
+// ============================================================
+
+/// Bitácora inmutable: un trigger impide UPDATE y DELETE.
+model AuditLog {
+  id         String      @id @default(uuid(7)) @db.Uuid
+  occurredAt DateTime    @default(now()) @map("occurred_at") @db.Timestamptz
+  userId     String?     @map("user_id") @db.Uuid
+  userEmail  String?     @map("user_email")
+  action     AuditAction
+  module     String
+  entityType String?     @map("entity_type")
+  entityId   String?     @map("entity_id")
+  before     Json?
+  after      Json?
+  ip         String?
+  userAgent  String?     @map("user_agent")
+  result     AuditResult @default(SUCCESS)
+  message    String?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([occurredAt])
+  @@index([userId, occurredAt])
+  @@index([entityType, entityId])
+  @@index([module, occurredAt])
+  @@map("audit_log")
+}
+
+model ImportJob {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  type        ImportType
+  fileName    String       @map("file_name")
+  status      ImportStatus @default(VALIDADO)
+  totalRows   Int          @map("total_rows")
+  validRows   Int          @map("valid_rows")
+  errorRows   Int          @map("error_rows")
+  /// Filas normalizadas con sus errores, para previsualizar antes de confirmar.
+  rows        Json
+  createdById String       @map("created_by_id") @db.Uuid
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  confirmedAt DateTime?    @map("confirmed_at") @db.Timestamptz
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([createdById, createdAt])
+  @@map("import_job")
+}
+
+model AlertDismissal {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  /// tipo:idEntidad:fecha
+  alertKey       String    @unique @map("alert_key")
+  dismissedUntil DateTime? @map("dismissed_until") @db.Date
+  dismissedById  String    @map("dismissed_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  dismissedBy User @relation(fields: [dismissedById], references: [id], onDelete: Restrict)
+
+  @@map("alert_dismissal")
+}

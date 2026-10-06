@@ -1,0 +1,24 @@
+# PostgreSQL para desarrollo y tests. La app se ejecuta con `npm run dev`.
+# La configuración de producción se agrega en la Fase 16.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rrhh
+      POSTGRES_PASSWORD: rrhh
+      POSTGRES_DB: rrhh
+      TZ: UTC
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rrhh -d rrhh"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
