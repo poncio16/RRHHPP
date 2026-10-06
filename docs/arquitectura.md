@@ -12,7 +12,7 @@ Este documento cubre la Fase 1 pedida en la sección 43: análisis de requerimie
 - **PostgreSQL + Prisma**, IDs UUID v7, fechas de calendario como `DATE`, instantes como `TIMESTAMPTZ`, importes como `NUMERIC(14,2)`.
 - **Toda regla legal o convencional es un parámetro** (días de vacaciones por antigüedad, modo de conteo de días, tolerancias, anticipación de alertas, rangos de antigüedad). El sistema trae valores iniciales editables, nunca constantes en el código.
 - **Autorización por permisos** (no solo por rol), verificada en el servidor en cada operación. Los 4 roles pedidos son conjuntos de permisos editables por el administrador.
-- **Dos registros distintos de "qué pasó"**: el *historial laboral* (dato de negocio, con fecha efectiva) y la *auditoría* (bitácora técnica inmutable de quién hizo qué).
+- **Dos registros distintos de "qué pasó"**: el _historial laboral_ (dato de negocio, con fecha efectiva) y la _auditoría_ (bitácora técnica inmutable de quién hizo qué).
 - **Baja lógica siempre**. El egreso no borra el legajo; el reingreso reutiliza el mismo legajo.
 - **Remuneraciones = registro administrativo informado**, rotulado explícitamente como "no constituye liquidación de haberes".
 
@@ -22,45 +22,45 @@ Este documento cubre la Fase 1 pedida en la sección 43: análisis de requerimie
 
 ### 2.1 Contradicciones o superposiciones
 
-| # | Hallazgo | Propuesta |
-|---|----------|-----------|
-| C1 | "Vacaciones" aparece como tipo de licencia (§8) y como módulo propio (§7). Además §23 pide entidades separadas `Leave`, `Absence` y `Vacation`. Tres tablas con fechas desde/hasta duplican lógica (solapamientos, conteo de días, aprobación) y obligan a consultar tres fuentes para ausentismo. | **[DECISIÓN]** Una sola entidad de movimiento, `LeaveRecord` ("licencia/ausencia"), cuyo `LeaveType` tiene una *clase*: `LICENCIA`, `AUSENCIA`, `VACACIONES`, `SUSPENSION`. El módulo de Vacaciones es una vista especializada sobre los registros de clase `VACACIONES` más el **saldo anual** (`VacationBalance`). En la interfaz siguen existiendo los tres módulos separados. Cumple §23 ("entidades equivalentes"). |
-| C2 | Ausencias, llegadas tarde, horas extras, cambios de categoría y cambios salariales se piden en Asistencia/Licencias/Legajo/Remuneraciones **y** otra vez en Novedades. Cargar dos veces el mismo hecho genera inconsistencias. | **[DECISIÓN]** Cada hecho se registra en su módulo de origen. Novedades es la "bandeja hacia liquidación": algunas se cargan a mano (adelantos, premios, descuentos, sanciones) y otras se **generan automáticamente** desde el módulo de origen con un vínculo (`sourceType`/`sourceId`), para no cargar dos veces. |
-| C3 | El estado del empleado es activo/suspendido/egresado (§4), pero el dashboard pide "inactivos" (§3). | **[DECISIÓN]** "Inactivos" = egresados. Los suspendidos se muestran como indicador separado (siguen en dotación). |
-| C4 | "Suspendido" como estado guardado a mano y "suspensiones" como historial con fechas son dos fuentes de verdad. Si se carga una suspensión del 10 al 15, alguien tendría que acordarse de cambiar el estado el 10 y el 16. | Se guarda `status` = `ACTIVO` / `EGRESADO`. "Suspendido" se **deriva**: activo con un registro de clase `SUSPENSION` aprobado que cubre la fecha consultada. Los filtros y el dashboard lo calculan por consulta. |
-| C5 | Orden de fases (§37): el Legajo (Fase 4) necesita sectores, puestos y categorías, que se crean en la Fase 5. La Auditoría está en la Fase 14 pero el login (Fase 3) ya debe auditarse. | Se intercambian las Fases 4 y 5. La **infraestructura** de auditoría (escritura) entra en la Fase 3 y cada módulo audita desde el día uno; la Fase 14 queda para el visor de auditoría. Ver sección 9. |
-| C6 | §7 pide "solicitar vacaciones" y "aprobar/rechazar", pero los empleados no son usuarios del sistema (el portal del empleado es una integración futura, §41). | Las solicitudes las carga RRHH en nombre del empleado y las aprueba un usuario con permiso de aprobación. El modelo ya guarda `requestedById`/`decidedById` para que el futuro portal se enchufe sin migrar datos. |
-| C7 | ART y Obra social se piden por empleado. La ART normalmente la contrata el empleador para toda la nómina. | Se mantiene por empleado (lo pide el prompt) pero con **valor predeterminado de la empresa** en Configuración, así no se carga 20 veces. |
-| C8 | §11 mezcla dos conceptos: la *condición salarial pactada* (básico vigente y sus cambios) y el *resumen mensual informado* por el sistema de liquidación (bruto, descuentos, neto de un período). | Dos entidades: `SalaryHistory` (condición con fecha efectiva, genera "cambios salariales") y `PayrollRecord` (resumen informado por período con renglones de conceptos). |
+| #   | Hallazgo                                                                                                                                                                                                                                                                                           | Propuesta                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| C1  | "Vacaciones" aparece como tipo de licencia (§8) y como módulo propio (§7). Además §23 pide entidades separadas `Leave`, `Absence` y `Vacation`. Tres tablas con fechas desde/hasta duplican lógica (solapamientos, conteo de días, aprobación) y obligan a consultar tres fuentes para ausentismo. | **[DECISIÓN]** Una sola entidad de movimiento, `LeaveRecord` ("licencia/ausencia"), cuyo `LeaveType` tiene una _clase_: `LICENCIA`, `AUSENCIA`, `VACACIONES`, `SUSPENSION`. El módulo de Vacaciones es una vista especializada sobre los registros de clase `VACACIONES` más el **saldo anual** (`VacationBalance`). En la interfaz siguen existiendo los tres módulos separados. Cumple §23 ("entidades equivalentes"). |
+| C2  | Ausencias, llegadas tarde, horas extras, cambios de categoría y cambios salariales se piden en Asistencia/Licencias/Legajo/Remuneraciones **y** otra vez en Novedades. Cargar dos veces el mismo hecho genera inconsistencias.                                                                     | **[DECISIÓN]** Cada hecho se registra en su módulo de origen. Novedades es la "bandeja hacia liquidación": algunas se cargan a mano (adelantos, premios, descuentos, sanciones) y otras se **generan automáticamente** desde el módulo de origen con un vínculo (`sourceType`/`sourceId`), para no cargar dos veces.                                                                                                     |
+| C3  | El estado del empleado es activo/suspendido/egresado (§4), pero el dashboard pide "inactivos" (§3).                                                                                                                                                                                                | **[DECISIÓN]** "Inactivos" = egresados. Los suspendidos se muestran como indicador separado (siguen en dotación).                                                                                                                                                                                                                                                                                                        |
+| C4  | "Suspendido" como estado guardado a mano y "suspensiones" como historial con fechas son dos fuentes de verdad. Si se carga una suspensión del 10 al 15, alguien tendría que acordarse de cambiar el estado el 10 y el 16.                                                                          | Se guarda `status` = `ACTIVO` / `EGRESADO`. "Suspendido" se **deriva**: activo con un registro de clase `SUSPENSION` aprobado que cubre la fecha consultada. Los filtros y el dashboard lo calculan por consulta.                                                                                                                                                                                                        |
+| C5  | Orden de fases (§37): el Legajo (Fase 4) necesita sectores, puestos y categorías, que se crean en la Fase 5. La Auditoría está en la Fase 14 pero el login (Fase 3) ya debe auditarse.                                                                                                             | Se intercambian las Fases 4 y 5. La **infraestructura** de auditoría (escritura) entra en la Fase 3 y cada módulo audita desde el día uno; la Fase 14 queda para el visor de auditoría. Ver sección 9.                                                                                                                                                                                                                   |
+| C6  | §7 pide "solicitar vacaciones" y "aprobar/rechazar", pero los empleados no son usuarios del sistema (el portal del empleado es una integración futura, §41).                                                                                                                                       | Las solicitudes las carga RRHH en nombre del empleado y las aprueba un usuario con permiso de aprobación. El modelo ya guarda `requestedById`/`decidedById` para que el futuro portal se enchufe sin migrar datos.                                                                                                                                                                                                       |
+| C7  | ART y Obra social se piden por empleado. La ART normalmente la contrata el empleador para toda la nómina.                                                                                                                                                                                          | Se mantiene por empleado (lo pide el prompt) pero con **valor predeterminado de la empresa** en Configuración, así no se carga 20 veces.                                                                                                                                                                                                                                                                                 |
+| C8  | §11 mezcla dos conceptos: la _condición salarial pactada_ (básico vigente y sus cambios) y el _resumen mensual informado_ por el sistema de liquidación (bruto, descuentos, neto de un período).                                                                                                   | Dos entidades: `SalaryHistory` (condición con fecha efectiva, genera "cambios salariales") y `PayrollRecord` (resumen informado por período con renglones de conceptos).                                                                                                                                                                                                                                                 |
 
 ### 2.2 Omisiones que conviene cubrir (necesarias para que lo pedido funcione)
 
-| # | Omisión | Por qué hace falta | Propuesta |
-|---|---------|--------------------|-----------|
-| O1 | **Feriados** | Sin calendario de feriados no se pueden contar días hábiles (vacaciones/licencias según convenio) ni detectar ausencias en asistencia. | Tabla `Holiday` administrable. No se precarga ningún calendario oficial como verdad: se carga desde Configuración (el seed incluye ejemplos marcados como tales). |
-| O2 | **Reingreso** | `DNI` y `CUIL` son únicos; un empleado que vuelve no podría darse de alta. | Reingreso sobre el **mismo legajo**: nuevo período laboral, el egreso anterior queda en historial. Se agrega **fecha de antigüedad reconocida** (`seniorityDate`), editable, distinta de la fecha de ingreso, porque el cómputo de períodos anteriores depende de cada caso. |
-| O3 | **Concurrencia** | Dos usuarios editando el mismo legajo: el segundo pisa al primero sin aviso (incumple criterio 28). | Bloqueo optimista con campo `version`: si el registro cambió desde que se abrió, se avisa y no se guarda. |
-| O4 | **Almacenamiento de archivos** | §6 dice "cuando la arquitectura lo permita". Hay que decidir dónde viven los archivos. | Capa `storage` con un driver de **disco local** (volumen persistente) en V1 y la interfaz preparada para un driver S3-compatible. Los archivos **nunca** son públicos: se descargan por una ruta autenticada que verifica permisos y audita la descarga. Depende del hosting (ver O5). |
-| O5 | **Hosting / despliegue** | Define si el disco local es viable, cómo se hacen backups y el costo. | **[DECISIÓN]** Recomendado: Docker Compose (app + PostgreSQL) en un VPS o servidor propio. Alternativa: Vercel + Postgres gestionado + almacenamiento S3 (más servicios, archivos fuera del disco). |
-| O6 | **Backups** | Información sensible y legalmente relevante; no está pedido. | Documentar `pg_dump` programado + copia del volumen de archivos, con prueba de restauración. Solo documentación y script, sin servicios extra. |
-| O7 | **Datos de salud** | Certificados médicos y preocupacionales son *datos sensibles* (Ley 25.326 de Protección de Datos Personales). | Los tipos de documento y de licencia tienen la marca `sensitive`. Solo los ven roles con permiso específico. Las descargas se auditan. |
-| O8 | **Política de contraseñas y bloqueo** | §18 pide control de sesiones pero no define bloqueo por intentos ni expiración. | Bloqueo temporal tras N intentos fallidos, expiración por inactividad y absoluta, cierre de sesión remoto por el administrador. Todo parametrizable. |
-| O9 | **Definición de "ausentismo"** | El indicador del dashboard no tiene fórmula. | Ausentismo = días de ausencia de tipos marcados `countsForAbsenteeism` / días laborables teóricos del período × 100. Qué tipos cuentan se configura por tipo. |
-| O10 | **"Legajo incompleto"** | §28 pide alerta pero no define qué es incompleto. | Lista configurable de campos requeridos para considerar el legajo completo (además de los obligatorios para guardar). |
-| O11 | **Turnos que cruzan medianoche** | Un turno 22:00–06:00 rompe el cálculo si se guardan solo horas. | Entrada y salida se guardan como fecha-hora completa; el día de asistencia es el día de inicio del turno. |
-| O12 | **Número de legajo** | No se define si es manual o automático. | Se sugiere el siguiente número automáticamente y se puede editar; único. |
+| #   | Omisión                               | Por qué hace falta                                                                                                                     | Propuesta                                                                                                                                                                                                                                                                              |
+| --- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| O1  | **Feriados**                          | Sin calendario de feriados no se pueden contar días hábiles (vacaciones/licencias según convenio) ni detectar ausencias en asistencia. | Tabla `Holiday` administrable. No se precarga ningún calendario oficial como verdad: se carga desde Configuración (el seed incluye ejemplos marcados como tales).                                                                                                                      |
+| O2  | **Reingreso**                         | `DNI` y `CUIL` son únicos; un empleado que vuelve no podría darse de alta.                                                             | Reingreso sobre el **mismo legajo**: nuevo período laboral, el egreso anterior queda en historial. Se agrega **fecha de antigüedad reconocida** (`seniorityDate`), editable, distinta de la fecha de ingreso, porque el cómputo de períodos anteriores depende de cada caso.           |
+| O3  | **Concurrencia**                      | Dos usuarios editando el mismo legajo: el segundo pisa al primero sin aviso (incumple criterio 28).                                    | Bloqueo optimista con campo `version`: si el registro cambió desde que se abrió, se avisa y no se guarda.                                                                                                                                                                              |
+| O4  | **Almacenamiento de archivos**        | §6 dice "cuando la arquitectura lo permita". Hay que decidir dónde viven los archivos.                                                 | Capa `storage` con un driver de **disco local** (volumen persistente) en V1 y la interfaz preparada para un driver S3-compatible. Los archivos **nunca** son públicos: se descargan por una ruta autenticada que verifica permisos y audita la descarga. Depende del hosting (ver O5). |
+| O5  | **Hosting / despliegue**              | Define si el disco local es viable, cómo se hacen backups y el costo.                                                                  | **[DECISIÓN]** Recomendado: Docker Compose (app + PostgreSQL) en un VPS o servidor propio. Alternativa: Vercel + Postgres gestionado + almacenamiento S3 (más servicios, archivos fuera del disco).                                                                                    |
+| O6  | **Backups**                           | Información sensible y legalmente relevante; no está pedido.                                                                           | Documentar `pg_dump` programado + copia del volumen de archivos, con prueba de restauración. Solo documentación y script, sin servicios extra.                                                                                                                                         |
+| O7  | **Datos de salud**                    | Certificados médicos y preocupacionales son _datos sensibles_ (Ley 25.326 de Protección de Datos Personales).                          | Los tipos de documento y de licencia tienen la marca `sensitive`. Solo los ven roles con permiso específico. Las descargas se auditan.                                                                                                                                                 |
+| O8  | **Política de contraseñas y bloqueo** | §18 pide control de sesiones pero no define bloqueo por intentos ni expiración.                                                        | Bloqueo temporal tras N intentos fallidos, expiración por inactividad y absoluta, cierre de sesión remoto por el administrador. Todo parametrizable.                                                                                                                                   |
+| O9  | **Definición de "ausentismo"**        | El indicador del dashboard no tiene fórmula.                                                                                           | Ausentismo = días de ausencia de tipos marcados `countsForAbsenteeism` / días laborables teóricos del período × 100. Qué tipos cuentan se configura por tipo.                                                                                                                          |
+| O10 | **"Legajo incompleto"**               | §28 pide alerta pero no define qué es incompleto.                                                                                      | Lista configurable de campos requeridos para considerar el legajo completo (además de los obligatorios para guardar).                                                                                                                                                                  |
+| O11 | **Turnos que cruzan medianoche**      | Un turno 22:00–06:00 rompe el cálculo si se guardan solo horas.                                                                        | Entrada y salida se guardan como fecha-hora completa; el día de asistencia es el día de inicio del turno.                                                                                                                                                                              |
+| O12 | **Número de legajo**                  | No se define si es manual o automático.                                                                                                | Se sugiere el siguiente número automáticamente y se puede editar; único.                                                                                                                                                                                                               |
 
 ### 2.3 Riesgos
 
-| Riesgo | Mitigación |
-|--------|------------|
-| Alcance muy amplio (16 fases, ~25 entidades) para una V1. | Fases cortas, cada una en un Pull Request que compila, pasa tests y se puede probar. Nada se marca como terminado si no persiste en la base. |
-| Presentar valores salariales como si fueran liquidación. | Rótulo fijo "Información informada — no constituye liquidación de haberes" en pantallas y exportaciones de remuneraciones. Sin cálculos de aportes/contribuciones. |
-| Valores legales precargados que queden desactualizados o sean incorrectos para el convenio de la empresa. | Todos los valores iniciales se muestran como "a validar" en Configuración. **[DECISIÓN]** si se precargan los valores de referencia de la LCT o se dejan vacíos. |
-| Fugas de datos sensibles (CBU, salarios, salud) por listados o exportaciones. | Selección de campos por permiso en la capa de servicios (no en la UI), listados sin datos sensibles, exportaciones auditadas, enmascarado de CBU en auditoría. |
-| Bypass de autorización vía middleware (caso CVE-2025-29927 de Next.js). | El middleware solo redirige; la verificación real de sesión y permisos ocurre en cada server action, route handler y servicio. |
-| Errores de zona horaria en fechas (corrimiento de un día). | Fechas de calendario como `DATE` (sin hora). Instantes como `TIMESTAMPTZ`. Conversión a `America/Argentina/Buenos_Aires` (configurable) solo en presentación. |
-| Importación masiva que pise datos existentes. | La importación solo **crea**; un registro que coincide por DNI/CUIL/legajo se informa como duplicado y no se toca. Previsualización obligatoria antes de confirmar, todo en una transacción. |
+| Riesgo                                                                                                    | Mitigación                                                                                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Alcance muy amplio (16 fases, ~25 entidades) para una V1.                                                 | Fases cortas, cada una en un Pull Request que compila, pasa tests y se puede probar. Nada se marca como terminado si no persiste en la base.                                                 |
+| Presentar valores salariales como si fueran liquidación.                                                  | Rótulo fijo "Información informada — no constituye liquidación de haberes" en pantallas y exportaciones de remuneraciones. Sin cálculos de aportes/contribuciones.                           |
+| Valores legales precargados que queden desactualizados o sean incorrectos para el convenio de la empresa. | Todos los valores iniciales se muestran como "a validar" en Configuración. **[DECISIÓN]** si se precargan los valores de referencia de la LCT o se dejan vacíos.                             |
+| Fugas de datos sensibles (CBU, salarios, salud) por listados o exportaciones.                             | Selección de campos por permiso en la capa de servicios (no en la UI), listados sin datos sensibles, exportaciones auditadas, enmascarado de CBU en auditoría.                               |
+| Bypass de autorización vía middleware (caso CVE-2025-29927 de Next.js).                                   | El middleware solo redirige; la verificación real de sesión y permisos ocurre en cada server action, route handler y servicio.                                                               |
+| Errores de zona horaria en fechas (corrimiento de un día).                                                | Fechas de calendario como `DATE` (sin hora). Instantes como `TIMESTAMPTZ`. Conversión a `America/Argentina/Buenos_Aires` (configurable) solo en presentación.                                |
+| Importación masiva que pise datos existentes.                                                             | La importación solo **crea**; un registro que coincide por DNI/CUIL/legajo se informa como duplicado y no se toca. Previsualización obligatoria antes de confirmar, todo en una transacción. |
 
 ---
 
@@ -79,24 +79,24 @@ Este documento cubre la Fase 1 pedida en la sección 43: análisis de requerimie
 
 ### 4.1 Stack y versiones
 
-| Capa | Elección | Motivo |
-|------|----------|--------|
-| Runtime | Node.js LTS vigente (24.x) | Soporte largo. |
-| Framework | Next.js estable vigente, App Router, React Server Components | Obligatorio. |
-| Lenguaje | TypeScript `strict` + `noUncheckedIndexedAccess` | Obligatorio. |
-| Estilos | Tailwind CSS v4 | Obligatorio. |
-| Componentes UI | shadcn/ui (Radix UI, código copiado al repo) | Accesibles, sin dependencia de una librería cerrada, se adaptan con Tailwind. |
-| Tablas | TanStack Table (paginación, orden y filtros **en servidor**) | Estándar, sin estilos propios. |
-| Formularios | React Hook Form + Zod (mismo esquema en cliente y servidor) | Validación doble sin duplicar reglas. |
-| Gráficos | Recharts | Simple, suficiente para barras/tortas/líneas. |
-| Fechas | date-fns + @date-fns/tz | Liviano, manejo explícito de zona horaria. |
-| Base de datos | PostgreSQL 16 o superior | Obligatorio. Extensiones `pg_trgm` y `unaccent` para búsqueda. |
-| ORM | Prisma (estable vigente), migraciones con `prisma migrate` | Obligatorio. |
-| Hash de contraseñas | Argon2id (`@node-rs/argon2`) | Recomendación OWASP vigente; binarios precompilados. |
-| Excel/CSV | ExcelJS (lectura y escritura de .xlsx y .csv) | Una sola librería para importar y exportar. |
-| Logs | pino (JSON estructurado) | Liviano; separa logs técnicos de la auditoría de negocio. |
-| Tests | Vitest (unitarios e integración contra PostgreSQL real), Playwright (pocos flujos de humo) | Rápido; integración real sin mocks de base. |
-| Calidad | ESLint, Prettier, `tsc --noEmit`, GitHub Actions en cada PR | Criterio de "compila y pasa tests" automatizado. |
+| Capa                | Elección                                                                                   | Motivo                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| Runtime             | Node.js LTS vigente (24.x)                                                                 | Soporte largo.                                                                |
+| Framework           | Next.js estable vigente, App Router, React Server Components                               | Obligatorio.                                                                  |
+| Lenguaje            | TypeScript `strict` + `noUncheckedIndexedAccess`                                           | Obligatorio.                                                                  |
+| Estilos             | Tailwind CSS v4                                                                            | Obligatorio.                                                                  |
+| Componentes UI      | shadcn/ui (Radix UI, código copiado al repo)                                               | Accesibles, sin dependencia de una librería cerrada, se adaptan con Tailwind. |
+| Tablas              | TanStack Table (paginación, orden y filtros **en servidor**)                               | Estándar, sin estilos propios.                                                |
+| Formularios         | React Hook Form + Zod (mismo esquema en cliente y servidor)                                | Validación doble sin duplicar reglas.                                         |
+| Gráficos            | Recharts                                                                                   | Simple, suficiente para barras/tortas/líneas.                                 |
+| Fechas              | date-fns + @date-fns/tz                                                                    | Liviano, manejo explícito de zona horaria.                                    |
+| Base de datos       | PostgreSQL 16 o superior                                                                   | Obligatorio. Extensiones `pg_trgm` y `unaccent` para búsqueda.                |
+| ORM                 | Prisma (estable vigente), migraciones con `prisma migrate`                                 | Obligatorio.                                                                  |
+| Hash de contraseñas | Argon2id (`@node-rs/argon2`)                                                               | Recomendación OWASP vigente; binarios precompilados.                          |
+| Excel/CSV           | ExcelJS (lectura y escritura de .xlsx y .csv)                                              | Una sola librería para importar y exportar.                                   |
+| Logs                | pino (JSON estructurado)                                                                   | Liviano; separa logs técnicos de la auditoría de negocio.                     |
+| Tests               | Vitest (unitarios e integración contra PostgreSQL real), Playwright (pocos flujos de humo) | Rápido; integración real sin mocks de base.                                   |
+| Calidad             | ESLint, Prettier, `tsc --noEmit`, GitHub Actions en cada PR                                | Criterio de "compila y pasa tests" automatizado.                              |
 
 Las versiones exactas se fijan en la Fase 2 con las estables de ese momento.
 
@@ -158,25 +158,25 @@ Reglas:
 
 Matriz inicial propuesta **[DECISIÓN]**:
 
-| Área | Administrador | RRHH | Administración | Consulta |
-|------|:---:|:---:|:---:|:---:|
-| Empleados: datos generales (nombre, legajo, sector, puesto, estado) | Escritura | Escritura | Lectura | Lectura |
-| Empleados: datos personales (DNI, CUIL, domicilio, nacimiento, contacto) | Escritura | Escritura | Lectura | — |
-| Datos bancarios | Escritura | Escritura | Lectura | — |
-| Remuneraciones e historial salarial | Escritura | Escritura | Lectura | — |
-| Novedades | Escritura | Escritura | Lectura + marcar "informada" | — |
-| Documentación general | Escritura | Escritura | Lectura | — |
-| Documentación sensible (médica, preocupacional) | Escritura | Escritura | — | — |
-| Licencias, ausencias, vacaciones (registrar / aprobar) | Escritura + aprobar | Escritura + aprobar | Lectura | Lectura |
-| Asistencia y horarios | Escritura | Escritura | Lectura | Lectura |
-| Egresos | Escritura | Escritura | Lectura | — |
-| Reportes | Todos | Todos | Dotación, altas/bajas, ausentismo, vacaciones, remuneraciones | Dotación |
-| Importación | Sí | Sí | — | — |
-| Exportación | Sí | Sí | De los reportes que ve | — |
-| Configuración y catálogos | Todo | Catálogos de RRHH | — | — |
-| Usuarios, roles y permisos | Sí | — | — | — |
-| Visor de auditoría | Sí | — | — | — |
-| Borrado físico | Sí (restringido) | — | — | — |
+| Área                                                                     |    Administrador    |        RRHH         |                        Administración                         | Consulta |
+| ------------------------------------------------------------------------ | :-----------------: | :-----------------: | :-----------------------------------------------------------: | :------: |
+| Empleados: datos generales (nombre, legajo, sector, puesto, estado)      |      Escritura      |      Escritura      |                            Lectura                            | Lectura  |
+| Empleados: datos personales (DNI, CUIL, domicilio, nacimiento, contacto) |      Escritura      |      Escritura      |                            Lectura                            |    —     |
+| Datos bancarios                                                          |      Escritura      |      Escritura      |                            Lectura                            |    —     |
+| Remuneraciones e historial salarial                                      |      Escritura      |      Escritura      |                            Lectura                            |    —     |
+| Novedades                                                                |      Escritura      |      Escritura      |                 Lectura + marcar "informada"                  |    —     |
+| Documentación general                                                    |      Escritura      |      Escritura      |                            Lectura                            |    —     |
+| Documentación sensible (médica, preocupacional)                          |      Escritura      |      Escritura      |                               —                               |    —     |
+| Licencias, ausencias, vacaciones (registrar / aprobar)                   | Escritura + aprobar | Escritura + aprobar |                            Lectura                            | Lectura  |
+| Asistencia y horarios                                                    |      Escritura      |      Escritura      |                            Lectura                            | Lectura  |
+| Egresos                                                                  |      Escritura      |      Escritura      |                            Lectura                            |    —     |
+| Reportes                                                                 |        Todos        |        Todos        | Dotación, altas/bajas, ausentismo, vacaciones, remuneraciones | Dotación |
+| Importación                                                              |         Sí          |         Sí          |                               —                               |    —     |
+| Exportación                                                              |         Sí          |         Sí          |                    De los reportes que ve                     |    —     |
+| Configuración y catálogos                                                |        Todo         |  Catálogos de RRHH  |                               —                               |    —     |
+| Usuarios, roles y permisos                                               |         Sí          |          —          |                               —                               |    —     |
+| Visor de auditoría                                                       |         Sí          |          —          |                               —                               |    —     |
+| Borrado físico                                                           |  Sí (restringido)   |          —          |                               —                               |    —     |
 
 ### 4.6 Seguridad (resumen de controles)
 
@@ -206,15 +206,15 @@ Matriz inicial propuesta **[DECISIÓN]**:
 
 ### 4.9 Preparación para integraciones futuras (sin implementarlas)
 
-| Integración | Punto de extensión previsto |
-|-------------|-----------------------------|
-| Sistema de liquidación | `PayrollRecord.source` (`MANUAL`/`IMPORT`/`API`), novedades con estado `INFORMADA` y exportación por período. |
-| Reloj de fichada | `AttendanceDay.source` y `externalRef`; la tabla de marcaciones crudas se agrega cuando exista el reloj concreto. |
-| API externa / ERP / contabilidad | Servicios independientes de la UI; se exponen como `app/api/v1/**` con tokens de API. |
-| Portal del empleado | `User.employeeId` opcional; solicitudes de licencia con `requestedById`. |
-| Recibos digitales / firma | `Document` + `StoredFile` con hash, listo para asociar firma. |
-| Email / WhatsApp | Alertas calculadas por un servicio reutilizable desde un job. |
-| Almacenamiento en la nube | Interfaz `StorageDriver` (`put/get/delete`) con driver local en V1. |
+| Integración                      | Punto de extensión previsto                                                                                       |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Sistema de liquidación           | `PayrollRecord.source` (`MANUAL`/`IMPORT`/`API`), novedades con estado `INFORMADA` y exportación por período.     |
+| Reloj de fichada                 | `AttendanceDay.source` y `externalRef`; la tabla de marcaciones crudas se agrega cuando exista el reloj concreto. |
+| API externa / ERP / contabilidad | Servicios independientes de la UI; se exponen como `app/api/v1/**` con tokens de API.                             |
+| Portal del empleado              | `User.employeeId` opcional; solicitudes de licencia con `requestedById`.                                          |
+| Recibos digitales / firma        | `Document` + `StoredFile` con hash, listo para asociar firma.                                                     |
+| Email / WhatsApp                 | Alertas calculadas por un servicio reutilizable desde un job.                                                     |
+| Almacenamiento en la nube        | Interfaz `StorageDriver` (`put/get/delete`) con driver local en V1.                                               |
 
 ---
 
@@ -299,26 +299,27 @@ Notación: `?` = opcional, `U` = único, `FK` = clave foránea, `IX` = índice.
 
 #### Estructura organizacional (catálogos con atributos)
 
-| Entidad | Campos propios |
-|---------|----------------|
-| **Department** (sector) | `name` U, `code?` |
-| **Position** (puesto) | `name` U, `department_id?` (sector sugerido) |
-| **CollectiveAgreement** (convenio) | `name`, `number?` U, `union_name?` |
-| **Category** | `name`, `agreement_id?` FK; U(`agreement_id`,`name`) |
-| **Workplace** (sucursal/establecimiento) | `name` U, domicilio, `province_id` FK |
-| **ContractType** | `name` U, `has_end_date` (exige fecha de fin, p. ej. plazo fijo) |
-| **WorkdayType** (jornada) | `name` U (completa, parcial…), `weekly_hours` NUMERIC |
-| **WorkSchedule** (horario/turno) | `name` U, `weekly_hours`, `work_modality_id?` |
-| **WorkScheduleDay** | `schedule_id` FK, `day_of_week` (1–7), `start_time`, `end_time`, `break_minutes`, `crosses_midnight`; U(`schedule_id`,`day_of_week`) |
-| **HealthInsurer** (obra social) | `name`, `rnos_code?` U |
-| **ArtProvider** | `name` U |
-| **Bank** | `name`, `code` U (3 dígitos, valida el CBU) |
+| Entidad                                  | Campos propios                                                                                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Department** (sector)                  | `name` U, `code?`                                                                                                                    |
+| **Position** (puesto)                    | `name` U, `department_id?` (sector sugerido)                                                                                         |
+| **CollectiveAgreement** (convenio)       | `name`, `number?` U, `union_name?`                                                                                                   |
+| **Category**                             | `name`, `agreement_id?` FK; U(`agreement_id`,`name`)                                                                                 |
+| **Workplace** (sucursal/establecimiento) | `name` U, domicilio, `province_id` FK                                                                                                |
+| **ContractType**                         | `name` U, `has_end_date` (exige fecha de fin, p. ej. plazo fijo)                                                                     |
+| **WorkdayType** (jornada)                | `name` U (completa, parcial…), `weekly_hours` NUMERIC                                                                                |
+| **WorkSchedule** (horario/turno)         | `name` U, `weekly_hours`, `work_modality_id?`                                                                                        |
+| **WorkScheduleDay**                      | `schedule_id` FK, `day_of_week` (1–7), `start_time`, `end_time`, `break_minutes`, `crosses_midnight`; U(`schedule_id`,`day_of_week`) |
+| **HealthInsurer** (obra social)          | `name`, `rnos_code?` U                                                                                                               |
+| **ArtProvider**                          | `name` U                                                                                                                             |
+| **Bank**                                 | `name`, `code` U (3 dígitos, valida el CBU)                                                                                          |
 
 Todas con `is_active`, `sort_order`, timestamps.
 
 #### Legajo
 
 **Employee**
+
 - Identificación: `id`, `file_number` (legajo) U, `last_name`, `first_name`, `dni` U, `cuil` U, `birth_date`, `nationality_id?` FK LookupValue, `marital_status_id?` FK, `sex` (enum `F`/`M`/`X`, según DNI).
 - Contacto: `address_line`, `city`, `province_id` FK, `postal_code`, `phone?`, `email?`, `emergency_contact_name?`, `emergency_contact_phone?`.
 - Laborales: `hire_date`, `seniority_date` (antigüedad reconocida, inicia igual a `hire_date`), `contract_end_date?`, `exit_date?`, `status` (enum `ACTIVO`/`EGRESADO`), `department_id`, `position_id`, `category_id?`, `contract_type_id`, `workday_type_id?`, `work_schedule_id?`, `work_modality_id?`, `agreement_id?`, `health_insurer_id?`, `art_provider_id?`, `workplace_id`, `supervisor_id?` FK Employee.
@@ -329,6 +330,7 @@ Todas con `is_active`, `sort_order`, timestamps.
 **EmployeeBankAccount** (1:1, separada para controlar el acceso) — `employee_id` FK U, `bank_id` FK, `cbu` (22 dígitos), `alias?`, `account_type_id` FK LookupValue.
 
 **EmployeeChangeHistory** (historial laboral)
+
 - `id`, `employee_id` FK IX, `change_set_id` (agrupa campos cambiados en una misma operación), `change_type` (enum: `PUESTO`, `SECTOR`, `CATEGORIA`, `JORNADA`, `HORARIO`, `MODALIDAD`, `ESTABLECIMIENTO`, `CONTRATACION`, `CONVENIO`, `SUPERIOR`, `DATOS_BANCARIOS`, `REINGRESO`, `OTRO`), `field`, `old_value?`, `new_value?` (texto legible), `old_ref_id?`, `new_ref_id?` (ID del catálogo), `effective_date`, `notes?`, `created_by_id`, `created_at`.
 - Se escribe automáticamente desde el servicio de empleados cuando cambia un campo histórico; la pantalla de edición pide fecha efectiva y observaciones para esos campos.
 - Los cambios salariales, licencias, suspensiones y egresos no se copian acá: la línea de tiempo los lee de sus tablas.
@@ -349,6 +351,7 @@ Todas con `is_active`, `sort_order`, timestamps.
 **LeaveType** — `id`, `name` U, `class` (enum `LICENCIA`/`AUSENCIA`/`VACACIONES`/`SUSPENSION`), `counting_mode` (enum `CORRIDOS`/`HABILES`), `is_paid`, `requires_certificate`, `max_days_per_event?`, `max_days_per_year?` (avisos configurables, no bloqueos rígidos), `counts_for_absenteeism`, `is_sensitive` (p. ej. enfermedad), `generates_novelty_type_id?` FK, `is_active`.
 
 **LeaveRecord**
+
 - `id`, `employee_id` FK IX, `leave_type_id` FK, `start_date`, `end_date`, `days` (calculado al guardar con el modo del tipo, guardado para reportes), `status` (enum `SOLICITADA`/`APROBADA`/`RECHAZADA`/`ANULADA`), `vacation_balance_id?` FK, `requested_by_id`, `decided_by_id?`, `decided_at?`, `decision_notes?`, `notes?`.
 - "Vigente" / "finalizada" se derivan de las fechas.
 - Índices: (`employee_id`,`start_date`), (`status`,`start_date`), `leave_type_id`.
@@ -362,6 +365,7 @@ Todas con `is_active`, `sort_order`, timestamps.
 #### Asistencia
 
 **AttendanceDay** — `id`, `employee_id` FK, `date`, `check_in?` TIMESTAMPTZ, `check_out?` TIMESTAMPTZ, `break_minutes`, `worked_minutes`, `regular_minutes`, `extra_minutes`, `late_minutes`, `status` (enum `PRESENTE`/`AUSENTE`/`JUSTIFICADO`/`FRANCO`/`FERIADO`), `source` (enum `MANUAL`/`IMPORT`), `external_ref?`, `notes?`. U(`employee_id`,`date`); IX(`date`).
+
 - Los minutos se calculan en el servicio con el horario asignado y la tolerancia configurada; se guardan para que los reportes no recalculen.
 - Si un registro de licencia aprobado cubre el día, el estado es `JUSTIFICADO` y se vincula a él. Una ausencia sin aviso se registra como `LeaveRecord` de clase `AUSENCIA`: la ausencia vive en un solo lugar.
 - Carga manual diaria y carga masiva por planilla (una grilla por día y sector).
@@ -394,15 +398,15 @@ Todas con `is_active`, `sort_order`, timestamps.
 
 ### 5.4 Reglas de validación (Zod, compartidas cliente/servidor)
 
-| Dato | Regla |
-|------|-------|
-| DNI | 7 u 8 dígitos, sin puntos (se aceptan con puntos y se normalizan). |
+| Dato      | Regla                                                                                                                                               |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DNI       | 7 u 8 dígitos, sin puntos (se aceptan con puntos y se normalizan).                                                                                  |
 | CUIL/CUIT | 11 dígitos, prefijo válido (20, 23, 24, 27, 30, 33, 34) y **dígito verificador módulo 11**. Aviso si los dígitos centrales no coinciden con el DNI. |
-| CBU | 22 dígitos con los **dos dígitos verificadores** del algoritmo del BCRA; los 3 primeros deben corresponder a un banco del catálogo. |
-| Email | Formato válido, normalizado en minúsculas. |
-| Fechas | Nacimiento en el pasado; ingreso ≥ nacimiento; egreso ≥ ingreso; hasta ≥ desde; vencimiento ≥ emisión. |
-| Importes | ≥ 0 salvo ajustes explícitos. |
-| Unicidad | Legajo, DNI, CUIL, email de usuario; se verifica antes de guardar con mensaje claro y además lo garantiza la base. |
+| CBU       | 22 dígitos con los **dos dígitos verificadores** del algoritmo del BCRA; los 3 primeros deben corresponder a un banco del catálogo.                 |
+| Email     | Formato válido, normalizado en minúsculas.                                                                                                          |
+| Fechas    | Nacimiento en el pasado; ingreso ≥ nacimiento; egreso ≥ ingreso; hasta ≥ desde; vencimiento ≥ emisión.                                              |
+| Importes  | ≥ 0 salvo ajustes explícitos.                                                                                                                       |
+| Unicidad  | Legajo, DNI, CUIL, email de usuario; se verifica antes de guardar con mensaje claro y además lo garantiza la base.                                  |
 
 Mensajes en español mediante un mapa de errores de Zod global.
 
@@ -523,24 +527,24 @@ Criterio: `features/` agrupa por dominio con sus capas adentro; `server/` es inf
 
 Cada fase se entrega en un Pull Request que compila, pasa lint, typecheck, tests y build en CI, con el informe pedido en §43 (archivos, migraciones, variables, comandos, cómo probar, tests, problemas). El seed crece con cada fase.
 
-| Fase | Contenido | Cambio respecto del pedido |
-|------|-----------|----------------------------|
-| 1 | Arquitectura y modelo de datos (este documento) | — |
-| 2 | Proyecto Next.js + TS estricto + Tailwind + shadcn/ui, Prisma + PostgreSQL en Docker, ESLint/Prettier, Vitest, CI, manejo de errores, logger, validación de `.env`, layout base | — |
-| 3 | Autenticación, sesiones, usuarios, roles, permisos **+ infraestructura de auditoría** | Auditoría adelantada (escritura) |
-| 4 | **Estructura organizacional y configuración**: empresa, catálogos, provincias, feriados, parámetros | Antes era Fase 5 |
-| 5 | **Legajo de empleados**: CRUD, búsqueda, filtros, datos bancarios, historial laboral, bloqueo optimista | Antes era Fase 4 |
-| 6 | Documentación y archivos (storage local, tipos, vencimientos) | — |
-| 7 | Licencias, ausencias y vacaciones (tipos, reglas, saldos, solicitudes, aprobación, conteo de días) | — |
-| 8 | Horarios, jornadas y asistencia | — |
-| 9 | Remuneraciones (historial salarial, resumen informado) y novedades | — |
-| 10 | Egresos, reingresos y línea de tiempo del legajo | — |
-| 11 | Alertas y dashboard | Alertas se agrupan acá porque el dashboard las usa |
-| 12 | Reportes y exportación | — |
-| 13 | Importación de empleados | — |
-| 14 | Visor de auditoría (filtros, detalle de diff, exportación) | Solo la interfaz |
-| 15 | Testing E2E, revisión de seguridad, optimización de consultas e índices | — |
-| 16 | README completo, documentación técnica y de operación, Dockerfile de producción, backups | — |
+| Fase | Contenido                                                                                                                                                                       | Cambio respecto del pedido                         |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1    | Arquitectura y modelo de datos (este documento)                                                                                                                                 | —                                                  |
+| 2    | Proyecto Next.js + TS estricto + Tailwind + shadcn/ui, Prisma + PostgreSQL en Docker, ESLint/Prettier, Vitest, CI, manejo de errores, logger, validación de `.env`, layout base | —                                                  |
+| 3    | Autenticación, sesiones, usuarios, roles, permisos **+ infraestructura de auditoría**                                                                                           | Auditoría adelantada (escritura)                   |
+| 4    | **Estructura organizacional y configuración**: empresa, catálogos, provincias, feriados, parámetros                                                                             | Antes era Fase 5                                   |
+| 5    | **Legajo de empleados**: CRUD, búsqueda, filtros, datos bancarios, historial laboral, bloqueo optimista                                                                         | Antes era Fase 4                                   |
+| 6    | Documentación y archivos (storage local, tipos, vencimientos)                                                                                                                   | —                                                  |
+| 7    | Licencias, ausencias y vacaciones (tipos, reglas, saldos, solicitudes, aprobación, conteo de días)                                                                              | —                                                  |
+| 8    | Horarios, jornadas y asistencia                                                                                                                                                 | —                                                  |
+| 9    | Remuneraciones (historial salarial, resumen informado) y novedades                                                                                                              | —                                                  |
+| 10   | Egresos, reingresos y línea de tiempo del legajo                                                                                                                                | —                                                  |
+| 11   | Alertas y dashboard                                                                                                                                                             | Alertas se agrupan acá porque el dashboard las usa |
+| 12   | Reportes y exportación                                                                                                                                                          | —                                                  |
+| 13   | Importación de empleados                                                                                                                                                        | —                                                  |
+| 14   | Visor de auditoría (filtros, detalle de diff, exportación)                                                                                                                      | Solo la interfaz                                   |
+| 15   | Testing E2E, revisión de seguridad, optimización de consultas e índices                                                                                                         | —                                                  |
+| 16   | README completo, documentación técnica y de operación, Dockerfile de producción, backups                                                                                        | —                                                  |
 
 Variables de entorno previstas: `DATABASE_URL`, `SESSION_SECRET` (firma de cookies auxiliares), `APP_URL`, `STORAGE_DIR`, `TRUSTED_PROXY`, `LOG_LEVEL`, `NODE_ENV`, credenciales del administrador inicial para el seed (`SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`).
 
@@ -550,16 +554,32 @@ Datos de demostración: empresa ficticia, 20+ empleados con nombres inventados y
 
 ## 10. Decisiones que necesitan aprobación
 
-| # | Decisión | Recomendación |
-|---|----------|---------------|
-| D1 | Repositorio de GitHub para el código | Crear uno nuevo y privado (p. ej. `rrhh`) en tu cuenta, o indicar uno existente. |
-| D2 | Dónde va a correr en producción | Docker Compose en VPS o servidor propio (más simple y barato, permite guardar archivos en disco). |
-| D3 | Matriz de permisos por rol (sección 4.5) | Aprobar la matriz propuesta, en especial que Administración vea salarios y bancos pero no documentación médica, y que Consulta no vea datos personales. |
-| D4 | Licencias, ausencias, vacaciones y suspensiones en una sola entidad con clases (C1) | Sí, unificar. |
-| D5 | Novedades generadas automáticamente desde otros módulos (C2) | Sí, con vínculo al origen; las manuales siguen existiendo. |
-| D6 | "Inactivos" = egresados; "suspendido" derivado de una suspensión vigente (C3, C4) | Sí. |
-| D7 | Reingreso sobre el mismo legajo con fecha de antigüedad reconocida editable (O2) | Sí. |
-| D8 | Valores iniciales de reglas legales (días de vacaciones por antigüedad, etc.) | Precargar los valores de referencia de la LCT marcados "a validar" por el contador o asesor laboral, editables. |
-| D9 | Una sola empresa (sin multiempresa) | Sí; las sucursales se manejan como establecimientos. |
+| #   | Decisión                                                                            | Recomendación                                                                                                                                           |
+| --- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Repositorio de GitHub para el código                                                | Crear uno nuevo y privado (p. ej. `rrhh`) en tu cuenta, o indicar uno existente.                                                                        |
+| D2  | Dónde va a correr en producción                                                     | Docker Compose en VPS o servidor propio (más simple y barato, permite guardar archivos en disco).                                                       |
+| D3  | Matriz de permisos por rol (sección 4.5)                                            | Aprobar la matriz propuesta, en especial que Administración vea salarios y bancos pero no documentación médica, y que Consulta no vea datos personales. |
+| D4  | Licencias, ausencias, vacaciones y suspensiones en una sola entidad con clases (C1) | Sí, unificar.                                                                                                                                           |
+| D5  | Novedades generadas automáticamente desde otros módulos (C2)                        | Sí, con vínculo al origen; las manuales siguen existiendo.                                                                                              |
+| D6  | "Inactivos" = egresados; "suspendido" derivado de una suspensión vigente (C3, C4)   | Sí.                                                                                                                                                     |
+| D7  | Reingreso sobre el mismo legajo con fecha de antigüedad reconocida editable (O2)    | Sí.                                                                                                                                                     |
+| D8  | Valores iniciales de reglas legales (días de vacaciones por antigüedad, etc.)       | Precargar los valores de referencia de la LCT marcados "a validar" por el contador o asesor laboral, editables.                                         |
+| D9  | Una sola empresa (sin multiempresa)                                                 | Sí; las sucursales se manejan como establecimientos.                                                                                                    |
 
 Fuera de alcance en V1 (confirmación implícita al aprobar): liquidación de sueldos, facturación y conexión con ARCA, email/WhatsApp, recuperación de contraseña por email, portal del empleado, integración con relojes de fichada, cambios laborales programados a futuro, modo oscuro.
+
+---
+
+## 11. Decisiones de implementación
+
+Registro de ajustes respecto del diseño original, con su motivo.
+
+| Fase | Decisión                                                                                                                                                                                                         | Motivo                                                                                                                         |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 2    | Next.js 16.4 con **Cache Components** activado (opción por defecto de la plantilla). Toda lectura de base o de sesión va dentro de un `<Suspense>` con su indicador de carga.                                    | Será obligatorio en la próxima versión mayor de Next.js; adoptarlo ahora evita una migración.                                  |
+| 2    | Prisma 7 con `@prisma/adapter-pg`, cliente generado en `src/generated/prisma` y configuración en `prisma.config.ts`.                                                                                             | Forma de trabajo estándar de Prisma 7.                                                                                         |
+| 2    | `NoveltyType.nature` y `SalaryConceptType.nature` comparten el enum `ConceptNature` (`HABER`/`DESCUENTO`/`INFORMATIVO`).                                                                                         | Es el mismo concepto; evita dos enums equivalentes.                                                                            |
+| 2    | `created_by_id`/`updated_by_id` sin clave foránea en catálogos y tablas operativas; con FK solo donde se muestra quién hizo algo (historial, novedades, licencias, egresos, archivos, importaciones, auditoría). | Los usuarios nunca se borran y el rastro completo está en `audit_log`; evita decenas de relaciones inversas en `User`.         |
+| 2    | Componentes de UI escritos a mano siguiendo la convención de shadcn/ui (`components.json` incluido).                                                                                                             | El registro de shadcn no es accesible desde el entorno de desarrollo; el CLI se puede usar igual desde una máquina con acceso. |
+| 2    | Fuente del sistema en lugar de Google Fonts.                                                                                                                                                                     | El build no depende de servicios externos (instalaciones en servidores propios sin salida a internet).                         |
+| 2    | El índice trigram para la búsqueda de empleados se crea en la Fase 5, junto con la búsqueda.                                                                                                                     | Se define junto con la consulta que lo usa.                                                                                    |

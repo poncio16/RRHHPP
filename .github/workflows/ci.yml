@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rrhh
+          POSTGRES_PASSWORD: rrhh
+          POSTGRES_DB: rrhh
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rrhh -d rrhh"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://rrhh:rrhh@localhost:5432/rrhh?schema=public
+      TEST_DATABASE_URL: postgresql://rrhh:rrhh@localhost:5432/rrhh_test?schema=public
+      APP_URL: http://localhost:3000
+      STORAGE_DIR: ./storage
+      LOG_LEVEL: warn
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Formato
+        run: npm run format:check
+
+      - name: Tipos
+        run: npm run typecheck
+
+      - name: Migraciones y seed (dos veces, para verificar que es idempotente)
+        run: |
+          npx prisma migrate deploy
+          npm run db:seed
+          npm run db:seed
+
+      - name: El schema coincide con las migraciones
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+
+      - name: Crear base de test
+        run: PGPASSWORD=rrhh psql -h localhost -U rrhh -d rrhh -c "CREATE DATABASE rrhh_test;"
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
