@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { isAvailable, navigation } from "./navigation";
+import { isAvailable, visibleNavigation } from "./navigation";
 
-export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+export function SidebarNav({ permissions, onNavigate }: { permissions: readonly string[]; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const groups = visibleNavigation(permissions);
 
   return (
     <nav aria-label="Navegación principal" className="flex flex-col gap-5 px-3 py-4">
-      {navigation.map((group) => (
+      {groups.map((group) => (
         <div key={group.label}>
           <p className="text-sidebar-muted px-3 pb-1.5 text-[11px] font-semibold tracking-wider uppercase">
             {group.label}

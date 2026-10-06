@@ -5,9 +5,20 @@ import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SidebarNav } from "./sidebar-nav";
+import { UserMenu } from "./user-menu";
 
 /** Estructura de la aplicación: sidebar fija en escritorio, panel deslizable en tablet y móvil. */
-export function AppShell({ topbar, children }: { topbar: ReactNode; children: ReactNode }) {
+type ShellUser = { name: string; roleName: string; permissions: readonly string[] };
+
+export function AppShell({
+  companyName,
+  user,
+  children,
+}: {
+  companyName: string;
+  user: ShellUser;
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -31,7 +42,7 @@ export function AppShell({ topbar, children }: { topbar: ReactNode; children: Re
           </button>
         </div>
         <div className="flex-1 overflow-y-auto">
-          <SidebarNav onNavigate={() => setOpen(false)} />
+          <SidebarNav permissions={user.permissions} onNavigate={() => setOpen(false)} />
         </div>
       </aside>
 
@@ -46,7 +57,8 @@ export function AppShell({ topbar, children }: { topbar: ReactNode; children: Re
           >
             <Menu className="size-5" />
           </Button>
-          <div className="min-w-0 flex-1">{topbar}</div>
+          <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm font-medium">{companyName}</span>
+          <UserMenu name={user.name} roleName={user.roleName} />
         </header>
         <main className="flex-1 p-4 lg:p-6">{children}</main>
       </div>

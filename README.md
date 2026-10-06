@@ -48,7 +48,8 @@ Si usás un PostgreSQL propio en lugar de Docker, creá dos bases (`rrhh` y `rrh
 | `APP_URL`                                 | URL pública de la aplicación.                                                                          |
 | `STORAGE_DIR`                             | Carpeta de archivos adjuntos (persistente en producción).                                              |
 | `LOG_LEVEL`                               | `fatal`, `error`, `warn`, `info`, `debug` o `trace`.                                                   |
-| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Administrador inicial (se usan desde la Fase 3).                                                       |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Administrador inicial que crea el seed si todavía no existe. Debe cambiar la contraseña al ingresar.   |
+| `TRUSTED_PROXY`                           | `true` solo detrás de un proxy inverso que envía la IP real (`X-Real-IP` / `X-Forwarded-For`).         |
 
 La aplicación valida las variables al arrancar y se detiene con un mensaje claro si falta alguna.
 
@@ -88,8 +89,26 @@ Reglas: los componentes no acceden a la base; las consultas viven en `features/*
 
 `GET /api/health` responde `200 {"status":"ok"}` si la base está disponible y `503` si no.
 
+## Usuarios y roles
+
+El seed crea los cuatro roles iniciales (solo si no existen) y un administrador con el email y la contraseña de `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`. Al primer ingreso el sistema obliga a cambiar esa contraseña.
+
+| Rol            | Alcance inicial                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------- |
+| Administrador  | Todos los permisos, siempre. No se puede editar ni quedar el sistema sin un administrador activo. |
+| RRHH           | Gestión completa del personal; no administra usuarios, parámetros generales ni ve la auditoría.   |
+| Administración | Lectura de legajos, datos bancarios, salariales, novedades y reportes autorizados; exportación.   |
+| Consulta       | Lectura de legajos básicos, licencias y asistencia; reporte de dotación.                          |
+
+Los permisos de RRHH, Administración y Consulta se ajustan en **Usuarios y permisos → Roles y permisos**. Desde **Usuarios** se dan de alta usuarios (con contraseña temporal que se muestra una sola vez), se cambian roles, se desactivan, se blanquean contraseñas, se desbloquean y se cierran sus sesiones.
+
 ## Seguridad
 
-Se completa en las fases 3 (autenticación, roles y permisos, auditoría) y 15 (revisión de seguridad). Lo que ya está en esta fase: secretos solo por `.env` (nunca versionado), validación de variables al iniciar, tabla de auditoría inmutable a nivel base de datos (trigger), restricciones `CHECK` sobre fechas, importes y formatos, y logs que ocultan contraseñas, tokens y CBU.
+- **Sesiones** en base de datos: la cookie (`httpOnly`, `SameSite=Lax`, `Secure` en producción) lleva un token aleatorio de 256 bits; en la base solo se guarda su hash SHA-256. Vencen por inactividad y por duración máxima.
+- **Contraseñas** con Argon2id. Mensaje de error genérico en el login y bloqueo temporal tras varios intentos fallidos.
+- Inactividad, duración máxima, intentos, minutos de bloqueo y largo mínimo de contraseña son parámetros (`Setting` `security`), no constantes del código.
+- **Permisos validados en el servidor** en cada página, server action y endpoint; el menú solo oculta lo que el rol no puede usar. Un acceso denegado queda auditado.
+- **Auditoría** de ingresos (exitosos y fallidos), cierres de sesión, cambios de contraseña, altas y cambios de usuarios y de permisos. La tabla `audit_log` es de solo inserción (trigger en la base); nunca guarda contraseñas ni tokens y enmascara el CBU.
+- Secretos solo por `.env` (nunca versionado), validación de variables al iniciar, restricciones `CHECK` sobre fechas, importes y formatos, y logs que ocultan contraseñas, tokens y CBU.
 
-Usuarios iniciales y roles: se documentan al entregar la Fase 3.
+La revisión de seguridad completa (cabeceras, límites de tasa, dependencias) es la Fase 15.

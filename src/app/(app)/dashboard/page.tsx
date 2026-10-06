@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSystemStatus } from "@/features/system/service";
+import { requirePageAccess } from "@/server/auth/request";
 
 export const metadata: Metadata = { title: "Inicio" };
 
@@ -23,6 +24,7 @@ export default function DashboardPage() {
 }
 
 async function SystemStatusCard() {
+  await requirePageAccess();
   const status = await getSystemStatus();
 
   return (

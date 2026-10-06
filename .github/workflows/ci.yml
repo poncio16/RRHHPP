@@ -35,6 +35,9 @@ jobs:
       APP_URL: http://localhost:3000
       STORAGE_DIR: ./storage
       LOG_LEVEL: warn
+      TRUSTED_PROXY: "false"
+      SEED_ADMIN_EMAIL: admin@empresa-demo.com.ar
+      SEED_ADMIN_PASSWORD: clave-solo-para-ci
       NEXT_TELEMETRY_DISABLED: "1"
 
     steps:
