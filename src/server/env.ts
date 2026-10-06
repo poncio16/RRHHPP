@@ -6,6 +6,11 @@ const envSchema = z.object({
   DATABASE_URL: z.url({ error: "DATABASE_URL debe ser una URL de conexión válida" }),
   APP_URL: z.url({ error: "APP_URL debe ser una URL válida" }),
   STORAGE_DIR: z.string().min(1).default("./storage"),
+  /** "true" si la app corre detrás de un proxy inverso que informa la IP real del cliente. */
+  TRUSTED_PROXY: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 });
 
