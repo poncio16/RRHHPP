@@ -145,7 +145,7 @@ export async function confirmImport(ctx: ActorContext, id: string) {
     ctx,
     valid.map((r) => ({ rowNumber: r.rowNumber, input: r.input })),
     async (tx, inserted) => {
-      const byRow = new Map(valid.map((r, i) => [r.rowNumber, inserted[i]!.fileNumber]));
+      const byRow = new Map(inserted.map((c) => [c.rowNumber, c.fileNumber]));
       const closed = await repo.closeJob(
         id,
         {

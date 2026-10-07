@@ -220,6 +220,22 @@ describe("importación de empleados", () => {
     expect((await getImportJob(rrhh, id)).status).toBe("VALIDADO");
   });
 
+  it("respeta el legajo indicado aunque una fila anterior se numere sola", async () => {
+    const max = (await db.employee.aggregate({ _max: { fileNumber: true } }))._max.fileNumber ?? 0;
+    const { id } = await validateImport(
+      rrhh,
+      csv([`;${line("Auto")}`, `${max + 1};${line("Fijo")}`], ["Legajo", ...HEADERS]),
+    );
+    expect((await getImportJob(rrhh, id)).summary.valid).toBe(2);
+    await confirmImport(rrhh, id);
+    const fixed = await db.employee.findFirstOrThrow({ where: { firstName: `Fijo ${tag}` } });
+    const auto = await db.employee.findFirstOrThrow({ where: { firstName: `Auto ${tag}` } });
+    expect(fixed.fileNumber).toBe(max + 1);
+    expect(auto.fileNumber).toBe(max + 2);
+    const rows = (await getImportJob(rrhh, id)).rows;
+    expect(rows.map((r) => r.fileNumber)).toEqual([max + 2, max + 1]);
+  });
+
   it("descartar no crea legajos y queda auditado", async () => {
     const { id } = await validateImport(rrhh, csv([line("Descartado")]));
     await discardImport(rrhh, id);

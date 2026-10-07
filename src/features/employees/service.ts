@@ -580,12 +580,17 @@ export async function createEmployee(ctx: ActorContext, input: unknown) {
 /**
  * Alta de varios legajos en una sola transacción (importación): o se crean
  * todos o ninguno. Un error de una fila se informa con su número y corta el
- * alta. `afterInsert` corre en la misma transacción.
+ * alta. `afterInsert` corre en la misma transacción. Primero se crean las
+ * filas con número de legajo propio, para que la numeración automática de las
+ * demás no tome uno de esos números.
  */
 export async function createEmployeesBatch(
   ctx: ActorContext,
   rows: { rowNumber: number; input: unknown }[],
-  afterInsert: (tx: Prisma.TransactionClient, created: { id: string; fileNumber: number }[]) => Promise<void>,
+  afterInsert: (
+    tx: Prisma.TransactionClient,
+    created: { rowNumber: number; id: string; fileNumber: number }[],
+  ) => Promise<void>,
 ) {
   await assertCanWrite(ctx);
   const parsed = rows.map((row) => {
@@ -596,8 +601,9 @@ export async function createEmployeesBatch(
     return { rowNumber: row.rowNumber, data: result.data };
   });
   return repo.transaction(async (tx) => {
-    const created: { id: string; fileNumber: number }[] = [];
-    for (const { rowNumber, data } of parsed) {
+    const created: { rowNumber: number; id: string; fileNumber: number }[] = [];
+    const ordered = [...parsed.filter((r) => r.data.fileNumber), ...parsed.filter((r) => !r.data.fileNumber)];
+    for (const { rowNumber, data } of ordered) {
       const duplicate = await repo.findDuplicateEmployee(
         { dni: data.dni, cuil: data.cuil, fileNumber: data.fileNumber },
         tx,
@@ -608,7 +614,7 @@ export async function createEmployeesBatch(
         );
       }
       try {
-        created.push(await insertEmployee(ctx, tx, data, " (importación)"));
+        created.push({ rowNumber, ...(await insertEmployee(ctx, tx, data, " (importación)")) });
       } catch (error) {
         if (error instanceof ValidationError) {
           const detail = Object.values(error.fieldErrors ?? {})
@@ -619,6 +625,7 @@ export async function createEmployeesBatch(
         throw error;
       }
     }
+    created.sort((a, b) => a.rowNumber - b.rowNumber);
     await afterInsert(tx, created);
     return created;
   }, 120_000);
