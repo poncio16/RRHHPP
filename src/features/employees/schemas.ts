@@ -175,7 +175,8 @@ export const EMPLOYEE_SORTS = {
 } as const;
 
 export const employeeListQuerySchema = baseListQuerySchema.extend({
-  status: z.enum(["activos", "egresados", "todos"]).catch("activos").default("activos"),
+  /** "suspendidos" = activos con una suspensión aprobada que cubre hoy. */
+  status: z.enum(["activos", "suspendidos", "egresados", "todos"]).catch("activos").default("activos"),
   departmentId: z.uuid().optional().catch(undefined),
   workplaceId: z.uuid().optional().catch(undefined),
   sort: z.enum(["apellido", "legajo", "ingreso"]).catch("apellido").default("apellido"),

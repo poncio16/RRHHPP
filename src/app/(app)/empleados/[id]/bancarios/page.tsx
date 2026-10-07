@@ -38,13 +38,7 @@ async function Content({ params }: { params: PageProps<"/empleados/[id]/bancario
 
   return (
     <>
-      <EmployeeHeader
-        employee={employee}
-        current="bancarios"
-        canEdit={page.canEdit}
-        canSeeBank
-        canSeeDocuments={page.canSeeDocuments}
-      />
+      <EmployeeHeader employee={employee} current="bancarios" access={page} />
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <CardTitle>Cuenta sueldo</CardTitle>

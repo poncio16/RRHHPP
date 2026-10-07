@@ -67,6 +67,7 @@ async function EmployeesContent({ searchParams }: Pick<Props, "searchParams">) {
               defaultValue="activos"
               options={[
                 { value: "activos", label: "Activos" },
+                { value: "suspendidos", label: "Suspendidos hoy" },
                 { value: "egresados", label: "Egresados" },
                 { value: "todos", label: "Todos" },
               ]}
@@ -133,6 +134,11 @@ async function EmployeesContent({ searchParams }: Pick<Props, "searchParams">) {
                     <Link href={`/empleados/${e.id}`} className="text-primary font-medium hover:underline">
                       {e.lastName}, {e.firstName}
                     </Link>
+                    {e.suspendedUntil && result.query.status === "activos" && (
+                      <Badge variant="warning" className="ml-2">
+                        Suspendido
+                      </Badge>
+                    )}
                     <span className="text-muted-foreground block text-xs sm:hidden">{e.department.name}</span>
                   </TableCell>
                   {canSeePersonal && <TableCell className="hidden tabular-nums md:table-cell">{e.dni}</TableCell>}
@@ -142,7 +148,11 @@ async function EmployeesContent({ searchParams }: Pick<Props, "searchParams">) {
                   <TableCell className="hidden whitespace-nowrap md:table-cell">{formatDate(e.hireDate)}</TableCell>
                   {result.query.status !== "activos" && (
                     <TableCell>
-                      <Badge variant={e.status === "ACTIVO" ? "success" : "muted"}>{STATUS_LABELS[e.status]}</Badge>
+                      {e.suspendedUntil ? (
+                        <Badge variant="warning">Suspendido hasta el {formatDate(e.suspendedUntil)}</Badge>
+                      ) : (
+                        <Badge variant={e.status === "ACTIVO" ? "success" : "muted"}>{STATUS_LABELS[e.status]}</Badge>
+                      )}
                     </TableCell>
                   )}
                 </TableRow>

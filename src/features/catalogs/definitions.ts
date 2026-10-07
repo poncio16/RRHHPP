@@ -6,6 +6,8 @@
  * Este archivo se usa también en el cliente: no importar nada del servidor.
  */
 
+import { COUNTING_MODE_LABELS, LEAVE_CLASS_LABELS } from "@/features/leaves/constants";
+
 /** Origen de las opciones de un campo de referencia. */
 export type RefSource = { kind: "catalog"; key: CatalogKey } | { kind: "province" } | { kind: "lookup"; group: string };
 
@@ -34,6 +36,17 @@ export type CatalogField =
       inList?: boolean;
     }
   | { name: string; label: string; type: "boolean"; hint?: string; inList?: boolean }
+  | {
+      name: string;
+      label: string;
+      /** Opción obligatoria de una lista fija. */
+      type: "choice";
+      options: readonly { value: string; label: string }[];
+      /** Solo se elige en el alta; después no se puede cambiar. */
+      immutable?: boolean;
+      hint?: string;
+      inList?: boolean;
+    }
   | {
       name: string;
       label: string;
@@ -73,6 +86,7 @@ export const CATALOG_SECTIONS = {
   contratacion: "Contratación",
   seguridadSocial: "Seguridad social y bancos",
   documentacion: "Documentación",
+  tiempo: "Licencias y ausencias",
   listas: "Listas",
 } as const;
 export type CatalogSection = keyof typeof CATALOG_SECTIONS;
@@ -129,6 +143,7 @@ export const CATALOG_KEYS = [
   "art",
   "bancos",
   "tipos-documento",
+  "tipos-licencia",
   "estado-civil",
   "nacionalidades",
   "modalidades",
@@ -346,6 +361,67 @@ export const CATALOGS: Record<CatalogKey, CatalogDefinition> = {
         label: "Documentación sensible",
         type: "boolean",
         hint: "Datos de salud (certificados médicos, preocupacionales): solo la ven los roles con ese permiso.",
+        inList: true,
+      },
+    ],
+  },
+  "tipos-licencia": {
+    key: "tipos-licencia",
+    title: "Tipos de licencia y ausencia",
+    singular: "tipo de licencia",
+    description: "Licencias, ausencias, vacaciones y suspensiones, con su forma de contar los días.",
+    section: "tiempo",
+    fields: [
+      name(),
+      {
+        name: "class",
+        label: "Clase",
+        type: "choice",
+        options: Object.entries(LEAVE_CLASS_LABELS).map(([value, label]) => ({ value, label })),
+        immutable: true,
+        hint: "Define en qué módulo aparece (las de clase Vacaciones descuentan del saldo anual). No se puede cambiar después del alta.",
+        inList: true,
+      },
+      {
+        name: "countingMode",
+        label: "Cómo se cuentan los días",
+        type: "choice",
+        options: Object.entries(COUNTING_MODE_LABELS).map(([value, label]) => ({ value, label })),
+        hint: "Los días hábiles usan el horario del empleado y los feriados. Se aplica a los registros nuevos.",
+        inList: true,
+      },
+      { name: "isPaid", label: "Con goce de haberes", type: "boolean", inList: true },
+      {
+        name: "requiresCertificate",
+        label: "Requiere certificado",
+        type: "boolean",
+        hint: "El registro muestra si falta adjuntar el certificado.",
+      },
+      {
+        name: "maxDaysPerEvent",
+        label: "Aviso: máximo de días por vez",
+        type: "days",
+        max: 365,
+        hint: "Opcional. Si se supera se avisa al cargar, sin impedir el registro.",
+      },
+      {
+        name: "maxDaysPerYear",
+        label: "Aviso: máximo de días por año",
+        type: "days",
+        max: 365,
+        hint: "Opcional. Suma los registros aprobados del año calendario.",
+      },
+      {
+        name: "countsForAbsenteeism",
+        label: "Cuenta para el ausentismo",
+        type: "boolean",
+        hint: "Se usa en el indicador y el reporte de ausentismo.",
+      },
+      {
+        name: "isSensitive",
+        label: "Dato de salud (sensible)",
+        type: "boolean",
+        hint: "Por ejemplo, enfermedad o accidente. Sin el permiso de datos de salud se ve como licencia reservada.",
         inList: true,
       },
     ],

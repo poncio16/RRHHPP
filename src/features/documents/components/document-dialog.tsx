@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Paperclip, Pencil, Plus } from "lucide-react";
+import { FilePlus2, Paperclip, Pencil, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { useForm, useWatch } from "react-hook-form";
@@ -58,7 +58,8 @@ const withEmployeeSchema = documentSchema.and(documentWithEmployeeSchema);
 
 /**
  * Alta o edición de un documento. Sin `employeeId` (listado general) se elige
- * el empleado en el formulario. El archivo es opcional.
+ * el empleado en el formulario. El archivo es opcional. Con `leave`, el
+ * documento queda vinculado a esa licencia (su certificado).
  */
 export function DocumentDialog({
   employeeId,
@@ -66,6 +67,7 @@ export function DocumentDialog({
   types,
   limits,
   document,
+  leave,
 }: {
   employeeId: string | null;
   employees?: { id: string; label: string }[];
@@ -78,6 +80,7 @@ export function DocumentDialog({
     fileName: string | null;
     values: Omit<Values, "employeeId">;
   };
+  leave?: { id: string; label: string };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -137,6 +140,7 @@ export function DocumentDialog({
       if (key !== "employeeId" || pickEmployee) data.set(key, value);
     }
     if (document) data.set("version", document.version);
+    if (leave) data.set("leaveRecordId", leave.id);
     if (file) data.set("file", file);
     startTransition(async () => {
       const result = document
@@ -170,6 +174,10 @@ export function DocumentDialog({
           <Button variant="ghost" size="icon" aria-label={`Editar ${document.title}`}>
             <Pencil />
           </Button>
+        ) : leave ? (
+          <Button variant="ghost" size="icon" aria-label={`Adjuntar certificado de ${leave.label}`}>
+            <FilePlus2 />
+          </Button>
         ) : (
           <Button>
             <Plus /> Nuevo documento
@@ -178,9 +186,15 @@ export function DocumentDialog({
       </DialogTrigger>
       <DialogContent className="max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{document ? "Editar documento" : "Nuevo documento"}</DialogTitle>
+          <DialogTitle>
+            {document ? "Editar documento" : leave ? "Adjuntar certificado" : "Nuevo documento"}
+          </DialogTitle>
           <DialogDescription>
-            {document ? document.title : "Registrá el documento y, si lo tenés, adjuntá el archivo."}
+            {document
+              ? document.title
+              : leave
+                ? `${leave.label}. Queda en la documentación del legajo, vinculado a este registro.`
+                : "Registrá el documento y, si lo tenés, adjuntá el archivo."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} noValidate className="flex flex-col gap-4">

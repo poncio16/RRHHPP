@@ -53,11 +53,19 @@ export async function idsMatchingName(text: string): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
+/** Suspensión aprobada que cubre el día: el estado "suspendido" se deriva de ella. */
+const suspendedOn = (day: Date): Prisma.LeaveRecordWhereInput => ({
+  status: "APROBADA",
+  leaveType: { class: "SUSPENSION" },
+  startDate: { lte: day },
+  endDate: { gte: day },
+});
+
 /**
  * Listado paginado. `searchPersonal` habilita la búsqueda por DNI y CUIL
  * (solo para quien puede ver datos personales).
  */
-export async function listEmployees(query: EmployeeListQuery, searchPersonal: boolean) {
+export async function listEmployees(query: EmployeeListQuery, searchPersonal: boolean, today: Date) {
   const or: Prisma.EmployeeWhereInput[] = [];
   if (query.q) {
     const digits = query.q.replace(/[.\-\s]/g, "");
@@ -68,7 +76,13 @@ export async function listEmployees(query: EmployeeListQuery, searchPersonal: bo
     }
   }
   const where: Prisma.EmployeeWhereInput = {
-    ...(query.status === "activos" ? { status: "ACTIVO" } : query.status === "egresados" ? { status: "EGRESADO" } : {}),
+    ...(query.status === "activos"
+      ? { status: "ACTIVO" }
+      : query.status === "suspendidos"
+        ? { status: "ACTIVO", leaveRecords: { some: suspendedOn(today) } }
+        : query.status === "egresados"
+          ? { status: "EGRESADO" }
+          : {}),
     ...(query.departmentId ? { departmentId: query.departmentId } : {}),
     ...(query.workplaceId ? { workplaceId: query.workplaceId } : {}),
     ...(or.length > 0 ? { OR: or } : {}),
@@ -83,7 +97,10 @@ export async function listEmployees(query: EmployeeListQuery, searchPersonal: bo
   const [items, total] = await Promise.all([
     db.employee.findMany({
       where,
-      select: listSelect,
+      select: {
+        ...listSelect,
+        leaveRecords: { where: suspendedOn(today), select: { endDate: true }, orderBy: { endDate: "desc" }, take: 1 },
+      },
       orderBy,
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,

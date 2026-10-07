@@ -30,7 +30,10 @@ export const PERMISSION_GROUPS = [
     permissions: [
       { code: "document:read", label: "Ver documentación" },
       { code: "document:write", label: "Registrar documentación" },
-      { code: "document.sensitive:read", label: "Ver documentación sensible (médica, preocupacional)" },
+      {
+        code: "document.sensitive:read",
+        label: "Ver datos de salud (documentación médica y preocupacional, licencias por enfermedad o accidente)",
+      },
     ],
   },
   {

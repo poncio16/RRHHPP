@@ -4,6 +4,7 @@ import { hasPermission } from "@/server/authz";
 import { requirePageAccess } from "@/server/auth/request";
 import { NotFoundError } from "@/server/errors";
 import { z } from "@/lib/zod";
+import { getActiveSuspension } from "@/features/leaves/service";
 import { getEmployee } from "./service";
 
 /**
@@ -20,12 +21,15 @@ export async function loadEmployeePage(params: Promise<{ id: string }>) {
     throw error;
   });
   const { ctx } = access;
+  const suspension = employee.status === "ACTIVO" ? await getActiveSuspension(ctx, employee.id) : null;
   return {
     allowed: true as const,
     ctx,
     employee,
+    suspension,
     canEdit: hasPermission(ctx, "employee:write") && hasPermission(ctx, "employee.personal:read"),
     canSeeBank: hasPermission(ctx, "employee.bank:read"),
     canSeeDocuments: hasPermission(ctx, "document:read"),
+    canSeeLeaves: hasPermission(ctx, "leave:read"),
   };
 }

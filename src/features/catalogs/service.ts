@@ -45,6 +45,7 @@ function toDisplay(field: CatalogField, row: Record<string, unknown>): string {
     return related?.name ?? related?.label ?? "—";
   }
   if (field.type === "hours") return String(value).replace(".", ",");
+  if (field.type === "choice") return field.options.find((o) => o.value === value)?.label ?? "—";
   return value === null || value === undefined || value === "" ? "—" : String(value);
 }
 

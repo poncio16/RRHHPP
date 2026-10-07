@@ -6,6 +6,7 @@ const TABS: { href: string; label: string; permission: Permission }[] = [
   { href: "/configuracion/horarios", label: "Horarios", permission: "config:catalogs" },
   { href: "/configuracion/feriados", label: "Feriados", permission: "config:catalogs" },
   { href: "/configuracion/empresa", label: "Empresa", permission: "config:manage" },
+  { href: "/configuracion/vacaciones", label: "Vacaciones", permission: "config:manage" },
   { href: "/configuracion/parametros", label: "Parámetros", permission: "config:manage" },
 ];
 

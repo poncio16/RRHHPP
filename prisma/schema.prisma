@@ -804,21 +804,24 @@ model LeaveRecord {
 
   @@index([employeeId, startDate])
   @@index([status, startDate])
+  /// Solapamientos y saldos: registros vigentes de un empleado.
+  @@index([employeeId, status, endDate], map: "leave_record_employee_status_idx")
   @@index([leaveTypeId])
   @@index([vacationBalanceId])
   @@map("leave_record")
 }
 
-/// Regla parametrizable: días de vacaciones por rango de antigüedad.
+/// Regla parametrizable: días de vacaciones por rango de antigüedad. Aplica
+/// con más de `minSeniorityYears` (o desde 0) y hasta `maxSeniorityYears`
+/// inclusive. Los días se cuentan con el modo del tipo de licencia de vacaciones.
 model VacationRule {
-  id                String       @id @default(uuid(7)) @db.Uuid
-  minSeniorityYears Int          @map("min_seniority_years")
-  maxSeniorityYears Int?         @map("max_seniority_years")
+  id                String   @id @default(uuid(7)) @db.Uuid
+  minSeniorityYears Int      @map("min_seniority_years")
+  maxSeniorityYears Int?     @map("max_seniority_years")
   days              Int
-  countingMode      CountingMode @map("counting_mode")
-  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz
-  updatedById       String?      @map("updated_by_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById       String?  @map("updated_by_id") @db.Uuid
 
   @@unique([minSeniorityYears])
   @@map("vacation_rule")

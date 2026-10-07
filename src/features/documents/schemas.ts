@@ -55,6 +55,11 @@ export const documentWithEmployeeSchema = z.object({
   employeeId: z.preprocess((v) => v ?? "", z.uuid("Elegí el empleado.")),
 });
 
+/** Licencia a la que se vincula el documento (por ejemplo, su certificado). */
+export const documentLeaveSchema = z.object({
+  leaveRecordId: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.uuid().nullable()),
+});
+
 /** Edición: `version` es el `updatedAt` leído, para detectar cambios simultáneos. */
 export const documentVersionSchema = z.object({ version: z.iso.datetime() });
 
