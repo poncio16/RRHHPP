@@ -17,6 +17,7 @@ import { NoveltySummaryTiles } from "@/features/novelties/components/novelty-sum
 import { getDepartmentOptions, getEmployeeOptions, getTypeOptions, listNovelties } from "@/features/novelties/service";
 import { periodEnd, todayInTimeZone, toIsoDate } from "@/lib/format";
 import { hrefWith } from "@/lib/list/href";
+import { ExportButtons } from "@/features/reports/components/export-buttons";
 import { flattenSearchParams } from "@/lib/list/query";
 import { hasPermission } from "@/server/authz";
 import { requirePageAccess } from "@/server/auth/request";
@@ -60,18 +61,23 @@ async function Content({ searchParams }: Pick<Props, "searchParams">) {
         title="Novedades"
         description="Bandeja hacia la liquidación: se aprueban y se marcan como informadas cuando se cargan en el sistema de liquidación."
         actions={
-          canWrite && (
-            <>
-              {result.canGenerate && <GenerateNoveltiesDialog period={query.periodo} label={result.label} />}
-              <NoveltyDialog
-                employeeId={null}
-                employees={employees}
-                types={types}
-                defaultDate={defaultDate}
-                defaultPeriod={query.periodo}
-              />
-            </>
-          )
+          <>
+            {hasPermission(ctx, "export:run") && (
+              <ExportButtons resource="novedades" params={{ ...params, periodo: query.periodo }} />
+            )}
+            {canWrite && (
+              <>
+                {result.canGenerate && <GenerateNoveltiesDialog period={query.periodo} label={result.label} />}
+                <NoveltyDialog
+                  employeeId={null}
+                  employees={employees}
+                  types={types}
+                  defaultDate={defaultDate}
+                  defaultPeriod={query.periodo}
+                />
+              </>
+            )}
+          </>
         }
       />
       <Card>

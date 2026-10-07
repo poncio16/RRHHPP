@@ -9,8 +9,9 @@ import { auditDiff, recordAudit, sanitizeForAudit } from "@/server/audit";
 import { assertPermission, hasPermission } from "@/server/authz";
 import type { ActorContext } from "@/server/context";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
-import { HISTORIC_FIELD_NAMES, HISTORIC_FIELDS, type HistoricField } from "./constants";
+import { HISTORIC_FIELD_NAMES, HISTORIC_FIELDS, STATUS_LABELS, type HistoricField } from "./constants";
 import * as repo from "./repository";
+import { EXPORT_MAX_ROWS, type Column, type ReportResult } from "@/features/reports/table";
 import { buildTimeline, TIMELINE_KIND_FILTER } from "./timeline";
 import {
   bankAccountSchema,
@@ -44,6 +45,68 @@ export async function listEmployees(ctx: ActorContext, rawQuery: unknown) {
       query.pageSize,
     ),
     query,
+  };
+}
+
+/**
+ * Listado de empleados para exportar, con los filtros de la pantalla. DNI y
+ * CUIL salen solo con permiso de datos personales.
+ */
+export async function exportEmployeeList(ctx: ActorContext, rawQuery: unknown): Promise<ReportResult> {
+  await assertPermission(ctx, "employee:read", MODULE);
+  const query = employeeListQuerySchema.parse(rawQuery);
+  const canSeePersonal = hasPermission(ctx, "employee.personal:read");
+  const today = todayInTimeZone();
+  const rows = await repo.listEmployeesForExport(query, canSeePersonal, today, EXPORT_MAX_ROWS);
+  const columns: Column[] = [
+    { key: "legajo", label: "Legajo", type: "int" },
+    { key: "apellido", label: "Apellido" },
+    { key: "nombre", label: "Nombre" },
+    ...(canSeePersonal
+      ? [
+          { key: "dni", label: "DNI" },
+          { key: "cuil", label: "CUIL" },
+        ]
+      : []),
+    { key: "estado", label: "Estado" },
+    { key: "sector", label: "Sector" },
+    { key: "puesto", label: "Puesto" },
+    { key: "categoria", label: "Categoría" },
+    { key: "establecimiento", label: "Establecimiento" },
+    { key: "contratacion", label: "Contratación" },
+    { key: "ingreso", label: "Ingreso", type: "date" },
+    { key: "egreso", label: "Egreso", type: "date" },
+  ];
+  const statusLabel = { activos: "Activos", suspendidos: "Suspendidos hoy", egresados: "Egresados", todos: "Todos" };
+  return {
+    title: "Empleados",
+    filters: [
+      `Estado: ${statusLabel[query.status]}`,
+      ...(query.q ? [`Búsqueda: ${query.q}`] : []),
+      ...(rows.length === EXPORT_MAX_ROWS ? [`Se exportaron las primeras ${EXPORT_MAX_ROWS} filas.`] : []),
+    ],
+    tables: [
+      {
+        id: "empleados",
+        title: "Empleados",
+        columns,
+        rows: rows.map((e) => ({
+          legajo: e.fileNumber,
+          apellido: e.lastName,
+          nombre: e.firstName,
+          ...(canSeePersonal ? { dni: e.dni, cuil: e.cuil } : {}),
+          estado: e.leaveRecords.length > 0 ? "Suspendido" : STATUS_LABELS[e.status],
+          sector: e.department.name,
+          puesto: e.position.name,
+          categoria: e.category?.name ?? null,
+          establecimiento: e.workplace.name,
+          contratacion: e.contractType.name,
+          ingreso: e.hireDate,
+          egreso: e.exitDate,
+        })),
+        empty: "No hay empleados con estos filtros.",
+      },
+    ],
   };
 }
 

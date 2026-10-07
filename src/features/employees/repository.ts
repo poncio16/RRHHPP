@@ -65,7 +65,7 @@ const suspendedOn = (day: Date): Prisma.LeaveRecordWhereInput => ({
  * Listado paginado. `searchPersonal` habilita la búsqueda por DNI y CUIL
  * (solo para quien puede ver datos personales).
  */
-export async function listEmployees(query: EmployeeListQuery, searchPersonal: boolean, today: Date) {
+async function listWhere(query: EmployeeListQuery, searchPersonal: boolean, today: Date) {
   const or: Prisma.EmployeeWhereInput[] = [];
   if (query.q) {
     const digits = query.q.replace(/[.\-\s]/g, "");
@@ -87,13 +87,19 @@ export async function listEmployees(query: EmployeeListQuery, searchPersonal: bo
     ...(query.workplaceId ? { workplaceId: query.workplaceId } : {}),
     ...(or.length > 0 ? { OR: or } : {}),
   };
-  const orderBy: Prisma.EmployeeOrderByWithRelationInput[] =
-    query.sort === "legajo"
-      ? [{ fileNumber: "asc" }]
-      : query.sort === "ingreso"
-        ? [{ hireDate: "desc" }, { lastName: "asc" }]
-        : [{ lastName: "asc" }, { firstName: "asc" }];
+  return where;
+}
 
+function listOrder(query: EmployeeListQuery): Prisma.EmployeeOrderByWithRelationInput[] {
+  return query.sort === "legajo"
+    ? [{ fileNumber: "asc" }]
+    : query.sort === "ingreso"
+      ? [{ hireDate: "desc" }, { lastName: "asc" }]
+      : [{ lastName: "asc" }, { firstName: "asc" }];
+}
+
+export async function listEmployees(query: EmployeeListQuery, searchPersonal: boolean, today: Date) {
+  const where = await listWhere(query, searchPersonal, today);
   const [items, total] = await Promise.all([
     db.employee.findMany({
       where,
@@ -101,13 +107,35 @@ export async function listEmployees(query: EmployeeListQuery, searchPersonal: bo
         ...listSelect,
         leaveRecords: { where: suspendedOn(today), select: { endDate: true }, orderBy: { endDate: "desc" }, take: 1 },
       },
-      orderBy,
+      orderBy: listOrder(query),
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
     }),
     db.employee.count({ where }),
   ]);
   return { items, total };
+}
+
+/** Todo el listado con los mismos filtros, para exportar (el servicio decide qué campos salen). */
+export async function listEmployeesForExport(
+  query: EmployeeListQuery,
+  searchPersonal: boolean,
+  today: Date,
+  limit: number,
+) {
+  return db.employee.findMany({
+    where: await listWhere(query, searchPersonal, today),
+    select: {
+      ...listSelect,
+      cuil: true,
+      exitDate: true,
+      category: { select: { name: true } },
+      contractType: { select: { name: true } },
+      leaveRecords: { where: suspendedOn(today), select: { endDate: true }, take: 1 },
+    },
+    orderBy: listOrder(query),
+    take: limit,
+  });
 }
 
 export async function findEmployee(id: string, client: Client = db) {
