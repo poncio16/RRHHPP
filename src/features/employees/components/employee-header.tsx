@@ -14,6 +14,8 @@ export type EmployeePageAccess = {
   canSeeDocuments: boolean;
   canSeeLeaves: boolean;
   canSeeAttendance: boolean;
+  canSeeSalary: boolean;
+  canSeeNovelties: boolean;
   /** Suspensión aprobada vigente hoy: el estado "suspendido" se deriva de ella. */
   suspension: { endDate: Date } | null;
 };
@@ -25,10 +27,20 @@ export function EmployeeHeader({
   access,
 }: {
   employee: EmployeeView;
-  current: "datos" | "bancarios" | "documentacion" | "licencias" | "asistencia" | "historial";
+  current:
+    "datos" | "bancarios" | "documentacion" | "licencias" | "asistencia" | "remuneraciones" | "novedades" | "historial";
   access: EmployeePageAccess;
 }) {
-  const { canEdit, canSeeBank, canSeeDocuments, canSeeLeaves, canSeeAttendance, suspension } = access;
+  const {
+    canEdit,
+    canSeeBank,
+    canSeeDocuments,
+    canSeeLeaves,
+    canSeeAttendance,
+    canSeeSalary,
+    canSeeNovelties,
+    suspension,
+  } = access;
   const base = `/empleados/${employee.id}`;
   const active = employee.status === "ACTIVO";
   const to = active ? todayInTimeZone() : (employee.labor.exitDate ?? todayInTimeZone());
@@ -38,6 +50,8 @@ export function EmployeeHeader({
     ...(canSeeDocuments ? [{ href: `${base}/documentacion`, label: "Documentación" }] : []),
     ...(canSeeLeaves ? [{ href: `${base}/licencias`, label: "Licencias y vacaciones" }] : []),
     ...(canSeeAttendance ? [{ href: `${base}/asistencia`, label: "Asistencia" }] : []),
+    ...(canSeeSalary ? [{ href: `${base}/remuneraciones`, label: "Remuneraciones" }] : []),
+    ...(canSeeNovelties ? [{ href: `${base}/novedades`, label: "Novedades" }] : []),
     { href: `${base}/historial`, label: "Historial laboral" },
   ];
   const currentHref = current === "datos" ? base : `${base}/${current}`;

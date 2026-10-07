@@ -32,5 +32,7 @@ export async function loadEmployeePage(params: Promise<{ id: string }>) {
     canSeeDocuments: hasPermission(ctx, "document:read"),
     canSeeLeaves: hasPermission(ctx, "leave:read"),
     canSeeAttendance: hasPermission(ctx, "attendance:read"),
+    canSeeSalary: hasPermission(ctx, "salary:read"),
+    canSeeNovelties: hasPermission(ctx, "novelty:read"),
   };
 }

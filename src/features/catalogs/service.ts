@@ -124,6 +124,12 @@ async function assertUnique(key: CatalogKey, values: Record<string, unknown>, ex
       throw new ConflictError(message, { code: [message] });
     }
   }
+  if (key === "tipos-novedad" && typeof values.generatedFrom === "string") {
+    if (await repo.findDuplicate(key, { generatedFrom: values.generatedFrom }, exceptId)) {
+      const message = "Otro tipo de novedad ya se genera desde ese hecho.";
+      throw new ConflictError(message, { generatedFrom: [message] });
+    }
+  }
   if (key === "categorias" && typeof values.name === "string") {
     const duplicate = await repo.findDuplicate(
       key,

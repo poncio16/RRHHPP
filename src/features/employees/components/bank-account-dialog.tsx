@@ -53,7 +53,7 @@ export function BankAccountDialog({
   const form = useForm<Values>({
     resolver: zodResolver(bankAccountSchema) as never,
     defaultValues: initial,
-    mode: "onBlur",
+    mode: "onSubmit",
   });
   const { errors, isDirty } = form.formState;
   const cbu = useWatch({ control: form.control, name: "cbu" });

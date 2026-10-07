@@ -43,7 +43,7 @@ export function CompanyForm({
   const form = useForm<Values, unknown, z.output<typeof companySchema>>({
     resolver: zodResolver(companySchema) as never,
     defaultValues: defaults,
-    mode: "onBlur",
+    mode: "onSubmit",
   });
   const { errors, isDirty } = form.formState;
 

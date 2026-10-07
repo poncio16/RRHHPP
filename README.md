@@ -2,7 +2,7 @@
 
 Aplicación web de gestión de personal para una PyME argentina: legajos, documentación, licencias, vacaciones, asistencia, remuneraciones informadas, novedades, egresos, reportes y auditoría.
 
-> **Estado:** en desarrollo por fases. Fase actual: **8 — asistencia y horarios**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
+> **Estado:** en desarrollo por fases. Fase actual: **9 — información salarial y novedades**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
 
 - Diseño técnico aprobado: [docs/arquitectura.md](docs/arquitectura.md)
 - El sistema **no** liquida sueldos ni emite comprobantes fiscales: registra la información que informa el sistema de liquidación de la empresa.
@@ -149,7 +149,7 @@ En **Licencias y ausencias** (menú) se registran licencias, ausencias, vacacion
 - **Saldos de vacaciones**: uno por empleado y año. Los días se calculan con las reglas por antigüedad de Configuración → Vacaciones y los parámetros de Parámetros → Vacaciones (fecha de corte de la antigüedad y proporción cuando no se trabajó lo suficiente). "Generar períodos" muestra el cálculo antes de crear los que faltan; los existentes no cambian. Cada período admite un ajuste con motivo y días arrastrados. Las reglas y parámetros del seed son los valores de referencia de la LCT y deben validarse.
 - **Permisos**: "Ver licencias, ausencias y vacaciones" para consultar, "Registrar licencias, ausencias y vacaciones" para cargar, editar y anular solicitudes y generar o ajustar saldos, "Aprobar o rechazar solicitudes" para decidir y editar aprobadas, y "Ver datos de salud" para ver los tipos marcados como dato de salud (sin ese permiso se muestran como "Licencia (dato reservado)", sin observaciones ni acciones).
 
-La generación de novedades para liquidación llega con la Fase 9 y los indicadores de ausentismo y alertas, con la Fase 11.
+Las licencias generan novedades si su tipo tiene configurado "Genera novedad" (ver Novedades). Los indicadores de ausentismo y las alertas llegan con la Fase 11.
 
 ## Asistencia
 
@@ -162,7 +162,29 @@ En **Asistencia** (menú) la **Planilla diaria** muestra, para un día, a todo e
 - **Límites**: no se cargan días futuros ni fuera del período en que el empleado trabajó en la empresa. Las horas se interpretan en la zona horaria de Buenos Aires.
 - **Permisos**: "Ver asistencia y horarios" para consultar y "Registrar asistencia" para cargar y corregir.
 
-La carga es manual. La importación desde relojes o archivos de fichadas queda preparada (cada día guarda su origen) pero no está implementada. Las novedades de horas adicionales y llegadas tarde llegan con la Fase 9 y el ausentismo y las alertas, con la Fase 11.
+La carga es manual. La importación desde relojes o archivos de fichadas queda preparada (cada día guarda su origen) pero no está implementada. Las horas adicionales, llegadas tarde y ausencias se convierten en novedades desde Novedades → Generar novedades. El ausentismo y las alertas llegan con la Fase 11.
+
+## Información salarial
+
+En **Información salarial** (menú) están los **resúmenes informados** de cada mes y los **básicos vigentes** de todo el personal; la pestaña **Remuneraciones** de cada legajo muestra el historial del empleado. Es un registro administrativo de lo que informa el sistema de liquidación de la empresa: **no constituye liquidación de haberes** y el sistema no calcula sueldos.
+
+- **Básicos**: cada cambio de básico se registra con la fecha desde la que rige (no futura y dentro del período de empleo). El vigente es el de fecha más reciente hasta hoy. Al corregir uno se cambian importe y observaciones; la fecha no.
+- **Resúmenes**: uno por empleado y mes, con bruto, descuentos y neto informados y, opcionalmente, renglones por concepto (sueldo básico, adicionales, horas extras, premios, descuentos, etc.; se administran en Configuración → Catálogos → Conceptos salariales). Si los totales no cierran con los renglones o el neto no es bruto menos descuentos, se avisa pero se guarda igual; la lista permite ver solo los que tienen diferencias.
+- **Importes**: se aceptan con coma decimal y puntos de miles ("1.234.567,89").
+- **Permisos**: "Ver información salarial" para consultar y "Registrar información salarial" para cargar y corregir.
+
+Los datos salariales del seed son ficticios.
+
+## Novedades
+
+**Novedades** (menú) es la bandeja de lo que hay que pasar al sistema de liquidación en cada mes; la pestaña **Novedades** de cada legajo muestra las del empleado. Tipos: adelantos, bonificaciones, descuentos, horas extras, ausencias, llegadas tarde, cambios de categoría y salariales, premios, sanciones y otros (Configuración → Catálogos → Tipos de novedad).
+
+- **Manuales**: se cargan con empleado, fecha, tipo, período, importe o cantidad cuando el tipo lo pide, y observaciones. Queda registrado quién la cargó.
+- **Generadas**: "Generar novedades" arma las del mes a partir de las licencias aprobadas (si su tipo tiene "Genera novedad"), la asistencia (horas extras, llegadas tarde y ausencias del mes), los cambios de básico y los cambios de categoría, según el campo "Se genera desde" de cada tipo de novedad. Antes de aplicar muestra qué crea, recalcula o anula. Se puede repetir: lo que cambió vuelve a pendiente, lo informado no se toca y lo anulado a mano no se recrea.
+- **Estados**: pendiente → aprobada → informada (después de cargarla en el sistema de liquidación; se puede desmarcar). Se anulan con un motivo; nada se borra. Solo las manuales se editan, y editar una aprobada la devuelve a pendiente. Los botones de aprobar y marcar informadas en bloque actúan sobre el mes y los filtros a la vista.
+- **Permisos**: "Ver novedades", "Registrar novedades" (cargar, editar, aprobar, anular y generar) y "Marcar novedades como informadas". Sin "Ver información salarial", las novedades de cambios salariales se muestran sin importe.
+
+La exportación de novedades a CSV llega con los reportes de la Fase 12.
 
 ## Seguridad
 

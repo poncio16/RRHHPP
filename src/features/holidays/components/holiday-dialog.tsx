@@ -37,7 +37,7 @@ export function HolidayDialog({ holiday }: { holiday?: { id: string } & Values }
   const form = useForm<Values>({
     resolver: zodResolver(holidaySchema) as never,
     defaultValues: holiday ?? EMPTY,
-    mode: "onBlur",
+    mode: "onSubmit",
   });
   const { errors, isDirty } = form.formState;
   const prefix = holiday ? `holiday-${holiday.id}` : "holiday-new";

@@ -24,7 +24,7 @@ export function SettingForm({ settingKey, value }: { settingKey: SettingKey; val
   const form = useForm<Values>({
     resolver: zodResolver(definition.schema) as never,
     defaultValues: value,
-    mode: "onBlur",
+    mode: "onSubmit",
   });
   const { errors, isDirty } = form.formState;
 

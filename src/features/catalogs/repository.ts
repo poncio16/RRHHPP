@@ -113,6 +113,19 @@ const TABLES: Record<CatalogKey, TableConfig> = {
   "tipos-licencia": {
     delegate: (c) => asDelegate(c.leaveType),
     entityType: "LeaveType",
+    include: { generatesNoveltyType: { select: { name: true } } },
+    searchFields: ["name"],
+    labelField: "name",
+  },
+  "tipos-novedad": {
+    delegate: (c) => asDelegate(c.noveltyType),
+    entityType: "NoveltyType",
+    searchFields: ["name"],
+    labelField: "name",
+  },
+  "conceptos-salariales": {
+    delegate: (c) => asDelegate(c.salaryConceptType),
+    entityType: "SalaryConceptType",
     searchFields: ["name"],
     labelField: "name",
   },

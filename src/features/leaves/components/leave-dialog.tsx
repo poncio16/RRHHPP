@@ -87,7 +87,7 @@ export function LeaveDialog({
   const form = useForm<Values>({
     resolver: zodResolver(pickEmployee ? withEmployeeSchema : leaveSchema) as never,
     defaultValues: initial,
-    mode: "onBlur",
+    mode: "onSubmit",
   });
   const { errors, isDirty } = form.formState;
   const typeId = useWatch({ control: form.control, name: "leaveTypeId" });

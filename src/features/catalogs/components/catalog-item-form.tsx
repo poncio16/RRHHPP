@@ -48,7 +48,7 @@ export function CatalogItemForm({
   const form = useForm<Values, unknown, Record<string, unknown>>({
     resolver: zodResolver(schema) as never,
     defaultValues: initial,
-    mode: "onBlur",
+    mode: "onSubmit",
   });
   const { errors, isDirty } = form.formState;
   const errorOf = (name: string) => errors[name]?.message as string | undefined;
@@ -79,13 +79,22 @@ export function CatalogItemForm({
           );
         }
         const required =
-          field.type === "hours" || field.type === "choice" || (field.type !== "days" && !!field.required);
+          field.type === "hours" ||
+          (field.type === "choice" && !field.optional) ||
+          (field.type !== "days" && field.type !== "choice" && !!field.required);
         if (field.type === "choice") {
           const locked = field.immutable && mode === "update";
           return (
-            <FormField key={field.name} id={id} label={field.label} error={error} hint={field.hint} required={!locked}>
+            <FormField
+              key={field.name}
+              id={id}
+              label={field.label}
+              error={error}
+              hint={field.hint}
+              required={!locked && !field.optional}
+            >
               <Select {...fieldA11y(id, error)} disabled={locked} {...form.register(field.name)}>
-                <option value="">Elegí una opción…</option>
+                <option value="">{field.optional ? "Ninguno" : "Elegí una opción…"}</option>
                 {field.options.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
