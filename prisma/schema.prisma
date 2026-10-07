@@ -804,6 +804,8 @@ model LeaveRecord {
 
   @@index([employeeId, startDate])
   @@index([status, startDate])
+  /// Solapamientos y saldos: registros vigentes de un empleado.
+  @@index([employeeId, status, endDate], map: "leave_record_employee_status_idx")
   @@index([leaveTypeId])
   @@index([vacationBalanceId])
   @@map("leave_record")
