@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Bell,
   CalendarCheck,
   CalendarDays,
   Clock,
@@ -30,13 +31,14 @@ export type NavItem = {
 export type NavGroup = { label: string; items: NavItem[] };
 
 /** Fase actual del desarrollo: habilita los ítems de fases ya entregadas. */
-export const CURRENT_PHASE = 10;
+export const CURRENT_PHASE = 11;
 
 export const navigation: NavGroup[] = [
   {
     label: "Personal",
     items: [
       { label: "Inicio", href: "/dashboard", icon: LayoutDashboard, phase: 2 },
+      { label: "Alertas", href: "/alertas", icon: Bell, phase: 11, permission: "employee:read" },
       { label: "Empleados", href: "/empleados", icon: Users, phase: 5, permission: "employee:read" },
       { label: "Documentación", href: "/documentacion", icon: FileText, phase: 6, permission: "document:read" },
       { label: "Egresos", href: "/egresos", icon: UserMinus, phase: 10, permission: "exit:read" },
