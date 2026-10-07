@@ -547,32 +547,81 @@ function sameValue(a: unknown, b: unknown) {
   return (a ?? null) === (b ?? null);
 }
 
+/** Alta dentro de una transacción: valida contra la base, numera si hace falta y audita. */
+async function insertEmployee(ctx: ActorContext, tx: Prisma.TransactionClient, data: EmployeeData, origin = "") {
+  const record = toRecord(data);
+  await validateAgainstDatabase(tx, record);
+  const fileNumber = data.fileNumber ?? (await repo.nextFileNumber(tx));
+  const created = await repo.createEmployee(
+    { ...record, fileNumber, status: "ACTIVO", createdById: ctx.userId, updatedById: ctx.userId },
+    tx,
+  );
+  await recordAudit(
+    ctx,
+    {
+      action: "CREATE",
+      module: MODULE,
+      entityType: "Employee",
+      entityId: created.id,
+      after: sanitizeForAudit(auditable(created)),
+      message: `Alta de legajo ${created.fileNumber}: ${created.lastName}, ${created.firstName}${origin}`,
+    },
+    tx,
+  );
+  return { id: created.id, fileNumber: created.fileNumber };
+}
+
 export async function createEmployee(ctx: ActorContext, input: unknown) {
   await assertCanWrite(ctx);
   const data = employeeSchema.parse(input);
-  const record = toRecord(data);
+  return repo.transaction((tx) => insertEmployee(ctx, tx, data));
+}
 
-  return repo.transaction(async (tx) => {
-    await validateAgainstDatabase(tx, record);
-    const fileNumber = data.fileNumber ?? (await repo.nextFileNumber(tx));
-    const created = await repo.createEmployee(
-      { ...record, fileNumber, status: "ACTIVO", createdById: ctx.userId, updatedById: ctx.userId },
-      tx,
-    );
-    await recordAudit(
-      ctx,
-      {
-        action: "CREATE",
-        module: MODULE,
-        entityType: "Employee",
-        entityId: created.id,
-        after: sanitizeForAudit(auditable(created)),
-        message: `Alta de legajo ${created.fileNumber}: ${created.lastName}, ${created.firstName}`,
-      },
-      tx,
-    );
-    return { id: created.id, fileNumber: created.fileNumber };
+/**
+ * Alta de varios legajos en una sola transacción (importación): o se crean
+ * todos o ninguno. Un error de una fila se informa con su número y corta el
+ * alta. `afterInsert` corre en la misma transacción.
+ */
+export async function createEmployeesBatch(
+  ctx: ActorContext,
+  rows: { rowNumber: number; input: unknown }[],
+  afterInsert: (tx: Prisma.TransactionClient, created: { id: string; fileNumber: number }[]) => Promise<void>,
+) {
+  await assertCanWrite(ctx);
+  const parsed = rows.map((row) => {
+    const result = employeeSchema.safeParse(row.input);
+    if (!result.success) {
+      throw new ConflictError(`La fila ${row.rowNumber} ya no es válida. Volvé a subir el archivo.`);
+    }
+    return { rowNumber: row.rowNumber, data: result.data };
   });
+  return repo.transaction(async (tx) => {
+    const created: { id: string; fileNumber: number }[] = [];
+    for (const { rowNumber, data } of parsed) {
+      const duplicate = await repo.findDuplicateEmployee(
+        { dni: data.dni, cuil: data.cuil, fileNumber: data.fileNumber },
+        tx,
+      );
+      if (duplicate) {
+        throw new ConflictError(
+          `La fila ${rowNumber} coincide con el legajo ${duplicate.fileNumber} (${duplicate.lastName}, ${duplicate.firstName}), cargado después de validar el archivo. Volvé a subirlo.`,
+        );
+      }
+      try {
+        created.push(await insertEmployee(ctx, tx, data, " (importación)"));
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          const detail = Object.values(error.fieldErrors ?? {})
+            .flat()
+            .join(" ");
+          throw new ConflictError(`La fila ${rowNumber} ya no es válida: ${detail} Volvé a subir el archivo.`);
+        }
+        throw error;
+      }
+    }
+    await afterInsert(tx, created);
+    return created;
+  }, 120_000);
 }
 
 export async function updateEmployee(ctx: ActorContext, id: string, input: unknown) {

@@ -2,7 +2,7 @@
 
 Aplicación web de gestión de personal para una PyME argentina: legajos, documentación, licencias, vacaciones, asistencia, remuneraciones informadas, novedades, egresos, reportes y auditoría.
 
-> **Estado:** en desarrollo por fases. Fase actual: **12 — reportes y exportación**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
+> **Estado:** en desarrollo por fases. Fase actual: **13 — importación de empleados**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
 
 - Diseño técnico aprobado: [docs/arquitectura.md](docs/arquitectura.md)
 - El sistema **no** liquida sueldos ni emite comprobantes fiscales: registra la información que informa el sistema de liquidación de la empresa.
@@ -245,6 +245,17 @@ El **Inicio** muestra indicadores calculados en el momento con los datos cargado
 - **Exportar**: con el permiso "Exportar listados y reportes", cada reporte se descarga en **Excel** (una hoja por tabla, con fechas y números reales) y cada tabla en **CSV**. También se exportan los listados de **Empleados** y **Novedades** con los filtros de la pantalla. DNI y CUIL salen solo con permiso de datos personales, y los datos de salud siguen reservados.
 - **CSV**: separador punto y coma, coma decimal, fechas dd/mm/aaaa y codificación UTF-8 con BOM, para que Excel en español lo abra directo. Los textos que empiezan con `=`, `+`, `-` o `@` se exportan con un apóstrofo adelante para que no se tomen como fórmulas.
 - Cada exportación queda en la auditoría con el reporte, el formato, los filtros y la cantidad de filas. Los listados exportan hasta 10.000 filas.
+
+## Importación de empleados
+
+**Importar** (menú) da de alta legajos nuevos desde un Excel o un CSV. Hace falta el permiso "Importar empleados" y, como en el alta manual, "Crear y modificar legajos" y "Ver datos personales" (por defecto, Administrador y RRHH).
+
+1. **Plantilla**: "Descargar plantilla" baja un Excel con la hoja **Empleados** (encabezados; los obligatorios resaltados), **Instrucciones** (formato de cada columna) y **Valores** (los nombres activos de cada catálogo, tal como hay que escribirlos). Se acepta también un CSV con los mismos encabezados, separado por `;`, `,` o tabulación, en UTF-8 o en la codificación de Excel en Windows.
+2. **Validación**: al subir el archivo se revisa la estructura (columnas obligatorias, repetidas o desconocidas) y cada fila con las mismas reglas del alta manual: DNI y CUIL con dígito verificador, fechas dd/mm/aaaa, catálogos por nombre (sin distinguir mayúsculas ni acentos; la provincia también por código), superior por número de legajo activo, fin de contrato si el tipo lo exige y categoría del convenio. Hasta 500 filas y 2 MB por archivo.
+3. **Vista previa**: muestra cada fila como válida, con errores (con la columna y el motivo) o duplicada. Es **duplicada** si el DNI, el CUIL o el legajo ya existen en el sistema (activo o no) o se repiten en otra fila del archivo: **nunca se modifica un legajo existente**. Todavía no se creó nada.
+4. **Confirmar o descartar**: se puede importar solo las filas válidas o descartar, corregir el archivo y volver a subirlo. Al confirmar se crean todos los legajos válidos en una sola transacción, o ninguno si algo cambió desde la validación (por ejemplo, alguien cargó a la misma persona); en ese caso hay que volver a subir el archivo.
+
+Cada alta queda en la auditoría como un alta más, marcada "(importación)", y la confirmación como `IMPORT` con el archivo y la cantidad de filas; descartar también queda registrado. Las importaciones recientes se listan con su estado; al cerrarse, el lote deja de guardar los datos completos de cada fila y conserva solo nombre, DNI, estado, observaciones y el legajo creado.
 
 ## Seguridad
 

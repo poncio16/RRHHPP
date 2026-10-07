@@ -311,8 +311,25 @@ export async function formMetadata() {
   };
 }
 
-export function transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-  return db.$transaction(fn);
+export function transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>, timeout?: number): Promise<T> {
+  return db.$transaction(fn, timeout ? { timeout, maxWait: 10_000 } : undefined);
+}
+
+/** Legajo que ya usa el DNI, el CUIL o el número de legajo. */
+export async function findDuplicateEmployee(
+  values: { dni: string; cuil: string; fileNumber: number | null },
+  client: Client = db,
+) {
+  return client.employee.findFirst({
+    where: {
+      OR: [
+        { dni: values.dni },
+        { cuil: values.cuil },
+        ...(values.fileNumber ? [{ fileNumber: values.fileNumber }] : []),
+      ],
+    },
+    select: { id: true, fileNumber: true, lastName: true, firstName: true, dni: true, cuil: true },
+  });
 }
 
 export async function listActiveBanks() {

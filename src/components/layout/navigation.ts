@@ -31,7 +31,7 @@ export type NavItem = {
 export type NavGroup = { label: string; items: NavItem[] };
 
 /** Fase actual del desarrollo: habilita los ítems de fases ya entregadas. */
-export const CURRENT_PHASE = 12;
+export const CURRENT_PHASE = 13;
 
 export const navigation: NavGroup[] = [
   {
