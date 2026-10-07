@@ -139,6 +139,29 @@ export const SETTING_DEFINITIONS = {
       proportionalWorkedDays: z.number().int().min(1).max(365).default(20),
     }),
   },
+  attendance: {
+    title: "Asistencia",
+    description:
+      "Criterios para calcular llegadas tarde y horas adicionales a partir del horario asignado. Dependen de la política de la empresa o del convenio.",
+    fields: [
+      {
+        name: "lateToleranceMinutes",
+        label: "Tolerancia de llegada tarde",
+        unit: "minutos",
+        hint: "Entre 0 y 120. Llegar hasta esta cantidad de minutos después del horario no cuenta como tarde; pasado ese margen se cuentan todos los minutos.",
+      },
+      {
+        name: "extraMinimumMinutes",
+        label: "Mínimo para contar horas adicionales",
+        unit: "minutos",
+        hint: "Entre 0 y 240. Lo trabajado por encima del horario cuenta como adicional cuando llega a este mínimo. 0 cuenta cualquier exceso.",
+      },
+    ] satisfies SettingFieldMeta[],
+    schema: z.object({
+      lateToleranceMinutes: z.number().int().min(0).max(120).default(0),
+      extraMinimumMinutes: z.number().int().min(0).max(240).default(0),
+    }),
+  },
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFINITIONS;
