@@ -4,6 +4,7 @@ import { Menu, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { HeaderSearch } from "./header-search";
 import { SidebarNav } from "./sidebar-nav";
 import { UserMenu } from "./user-menu";
 
@@ -20,6 +21,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const canSearch = user.permissions.includes("employee:read");
 
   return (
     <div className="flex min-h-dvh">
@@ -57,7 +59,15 @@ export function AppShell({
           >
             <Menu className="size-5" />
           </Button>
-          <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm font-medium">{companyName}</span>
+          <span
+            className={cn(
+              "text-muted-foreground min-w-0 truncate text-sm font-medium",
+              canSearch ? "hidden max-w-56 md:block" : "flex-1",
+            )}
+          >
+            {companyName}
+          </span>
+          {canSearch && <HeaderSearch />}
           <UserMenu name={user.name} roleName={user.roleName} />
         </header>
         <main className="flex-1 p-4 lg:p-6">{children}</main>

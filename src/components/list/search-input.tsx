@@ -2,7 +2,7 @@
 
 import { Search } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Input } from "@/components/ui/input";
 
 /** Búsqueda que actualiza `?q=` en la URL (con espera de 300 ms) y vuelve a la página 1. */
@@ -12,6 +12,16 @@ export function SearchInput({ placeholder = "Buscar…" }: { placeholder?: strin
   const params = useSearchParams();
   const [value, setValue] = useState(params.get("q") ?? "");
   const [, startTransition] = useTransition();
+  const urlQuery = params.get("q") ?? "";
+  const lastUrlQuery = useRef(urlQuery);
+
+  // Si la URL cambia desde afuera (por ejemplo, la búsqueda de la barra superior), se refleja acá.
+  useEffect(() => {
+    if (urlQuery !== lastUrlQuery.current) {
+      lastUrlQuery.current = urlQuery;
+      setValue(urlQuery);
+    }
+  }, [urlQuery]);
 
   useEffect(() => {
     const current = params.get("q") ?? "";
@@ -21,6 +31,7 @@ export function SearchInput({ placeholder = "Buscar…" }: { placeholder?: strin
       if (value.trim()) next.set("q", value.trim());
       else next.delete("q");
       next.delete("page");
+      lastUrlQuery.current = value.trim();
       startTransition(() => router.replace(`${pathname}?${next.toString()}`));
     }, 300);
     return () => clearTimeout(timer);
