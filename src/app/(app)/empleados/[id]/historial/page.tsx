@@ -2,80 +2,102 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AccessDenied } from "@/components/feedback/access-denied";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { FilterSelect } from "@/components/list/filter-select";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmployeeHeader } from "@/features/employees/components/employee-header";
-import { CHANGE_TYPE_LABELS } from "@/features/employees/constants";
+import { EmployeeTimeline } from "@/features/employees/components/employee-timeline";
 import { loadEmployeePage } from "@/features/employees/page-data";
-import { getHistory } from "@/features/employees/service";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { getTimeline } from "@/features/employees/service";
+import { ExitDialog } from "@/features/exits/components/exit-dialog";
+import { ExitsTable } from "@/features/exits/components/exits-table";
+import { RehireDialog } from "@/features/exits/components/rehire-dialog";
+import { loadExitFormData } from "@/features/exits/page-data";
+import { listEmployeeExits } from "@/features/exits/service";
+import { formatDate, toIsoDate } from "@/lib/format";
+import { flattenSearchParams } from "@/lib/list/query";
 
-export const metadata: Metadata = { title: "Historial laboral" };
+export const metadata: Metadata = { title: "Historial" };
 
-export default function HistoryPage({ params }: PageProps<"/empleados/[id]/historial">) {
+type Props = PageProps<"/empleados/[id]/historial">;
+
+export default function HistoryPage({ params, searchParams }: Props) {
   return (
     <Suspense fallback={<Skeleton className="h-96 w-full" />}>
-      <Content params={params} />
+      <Content params={params} searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function Content({ params }: { params: PageProps<"/empleados/[id]/historial">["params"] }) {
+async function Content({ params, searchParams }: Props) {
   const page = await loadEmployeePage(params);
   if (!page.allowed) return <AccessDenied />;
-  const { employee } = page;
-  const rows = await getHistory(page.ctx, employee.id);
+  const { employee, ctx } = page;
+  const [timeline, exits] = await Promise.all([
+    getTimeline(ctx, employee.id, flattenSearchParams(await searchParams)),
+    page.canSeeExits ? listEmployeeExits(ctx, employee.id) : Promise.resolve([]),
+  ]);
+  const exitForm = page.canSeeExits
+    ? await loadExitFormData(
+        ctx,
+        exits.flatMap((e) => [e.type.id, e.reason.id]),
+      )
+    : null;
+  const edit = exitForm?.edit ?? null;
+  const active = employee.status === "ACTIVO";
+  const name = `${employee.lastName}, ${employee.firstName}`;
+
+  const actions =
+    edit &&
+    (active
+      ? !page.pendingExit && (
+          <ExitDialog
+            employeeId={employee.id}
+            types={edit.types}
+            reasons={edit.reasons}
+            today={edit.today}
+            triggerVariant="outline"
+          />
+        )
+      : employee.labor.exitDate && (
+          <RehireDialog
+            employeeId={employee.id}
+            name={name}
+            version={employee.version}
+            lastExit={formatDate(employee.labor.exitDate)}
+            currentSeniority={toIsoDate(employee.labor.seniorityDate)}
+            today={edit.today}
+          />
+        ));
+
+  const filters = [
+    { value: "todos", label: "Todo el historial" },
+    { value: "laborales", label: "Ingresos y cambios laborales" },
+    ...(timeline.sources.salary ? [{ value: "salariales", label: "Básicos" }] : []),
+    ...(timeline.sources.leaves ? [{ value: "licencias", label: "Licencias, ausencias y suspensiones" }] : []),
+    ...(timeline.sources.exits ? [{ value: "egresos", label: "Ingresos y egresos" }] : []),
+  ];
 
   return (
     <>
-      <EmployeeHeader employee={employee} current="historial" access={page} />
+      <EmployeeHeader employee={employee} current="historial" access={page} actions={actions || undefined} />
+      {exits.length > 0 && (
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Egresos</CardTitle>
+          </CardHeader>
+          <ExitsTable items={exits} showEmployee={false} edit={edit} />
+        </Card>
+      )}
       <Card>
-        {rows.length === 0 ? (
-          <EmptyState
-            title="Sin cambios registrados"
-            description="Acá aparecen los cambios de puesto, sector, categoría, convenio, contratación, jornada, horario, modalidad, establecimiento, superior y cuenta sueldo."
-          />
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b p-3">
+          <h2 className="font-semibold">Línea de tiempo</h2>
+          <FilterSelect name="tipo" label="Qué mostrar" defaultValue="todos" options={filters} />
+        </div>
+        {timeline.events.length === 0 ? (
+          <EmptyState title="Sin hechos para mostrar" description="Probá con otro filtro." />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Vigente desde</TableHead>
-                <TableHead className="hidden sm:table-cell">Cambio</TableHead>
-                <TableHead>Anterior → Nuevo</TableHead>
-                <TableHead className="hidden lg:table-cell">Observaciones</TableHead>
-                <TableHead className="hidden md:table-cell">Registrado</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="align-top whitespace-nowrap">
-                    {formatDate(row.effectiveDate)}
-                    <span className="text-muted-foreground block text-xs sm:hidden">
-                      {CHANGE_TYPE_LABELS[row.changeType]}
-                    </span>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    <Badge variant="muted">{CHANGE_TYPE_LABELS[row.changeType]}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-muted-foreground">{row.oldValue ?? "—"}</span>
-                    <span aria-hidden> → </span>
-                    <span className="sr-only"> pasó a </span>
-                    <span className="font-medium">{row.newValue ?? "—"}</span>
-                    {row.notes && <span className="text-muted-foreground block text-xs lg:hidden">{row.notes}</span>}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground hidden lg:table-cell">{row.notes ?? "—"}</TableCell>
-                  <TableCell className="text-muted-foreground hidden text-xs md:table-cell">
-                    {formatDateTime(row.createdAt)}
-                    <span className="block">{row.createdBy.name}</span>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <EmployeeTimeline events={timeline.events} />
         )}
       </Card>
     </>

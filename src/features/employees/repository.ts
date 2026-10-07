@@ -290,3 +290,46 @@ export function transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>)
 export async function listActiveBanks() {
   return db.bank.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { code: true, name: true } });
 }
+
+/* ----------------------------------------------------------------------------
+ * Línea de tiempo del legajo (lee las tablas de cada módulo, no copia datos)
+ * ------------------------------------------------------------------------- */
+
+export async function timelineSalaries(employeeId: string) {
+  return db.salaryHistory.findMany({
+    where: { employeeId },
+    select: { id: true, effectiveDate: true, basicSalary: true, notes: true },
+    orderBy: { effectiveDate: "asc" },
+  });
+}
+
+export async function timelineLeaves(employeeId: string) {
+  return db.leaveRecord.findMany({
+    where: { employeeId, status: "APROBADA" },
+    select: {
+      id: true,
+      startDate: true,
+      endDate: true,
+      days: true,
+      notes: true,
+      leaveType: { select: { name: true, class: true, isSensitive: true } },
+    },
+    orderBy: { startDate: "asc" },
+  });
+}
+
+export async function timelineExits(employeeId: string) {
+  return db.employeeExit.findMany({
+    where: { employeeId },
+    select: {
+      id: true,
+      exitDate: true,
+      status: true,
+      notes: true,
+      exitType: { select: { label: true } },
+      exitReason: { select: { label: true } },
+      confirmedBy: { select: { name: true } },
+    },
+    orderBy: { exitDate: "asc" },
+  });
+}

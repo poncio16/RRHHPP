@@ -11,11 +11,13 @@ import type { ActorContext } from "@/server/context";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { HISTORIC_FIELD_NAMES, HISTORIC_FIELDS, type HistoricField } from "./constants";
 import * as repo from "./repository";
+import { buildTimeline, TIMELINE_KIND_FILTER } from "./timeline";
 import {
   bankAccountSchema,
   changeMetaSchema,
   employeeListQuerySchema,
   employeeSchema,
+  timelineQuerySchema,
   type EmployeeData,
 } from "./schemas";
 
@@ -237,6 +239,42 @@ export async function getHistory(ctx: ActorContext, employeeId: string) {
   const rows = await repo.listHistory(employeeId);
   // Los cambios bancarios solo se muestran a quien puede ver datos bancarios.
   return hasPermission(ctx, "employee.bank:read") ? rows : rows.filter((r) => r.changeType !== "DATOS_BANCARIOS");
+}
+
+/**
+ * Línea de tiempo del legajo. Cada fuente se incluye solo si la persona
+ * tiene el permiso de ese módulo (básicos, licencias, egresos).
+ */
+export async function getTimeline(ctx: ActorContext, employeeId: string, rawQuery: unknown) {
+  await assertPermission(ctx, "employee:read", MODULE);
+  const { tipo } = timelineQuerySchema.parse(rawQuery);
+  const employee = await repo.findEmployee(employeeId);
+  if (!employee) throw new NotFoundError("El legajo no existe.");
+  const can = {
+    salary: hasPermission(ctx, "salary:read"),
+    leaves: hasPermission(ctx, "leave:read"),
+    exits: hasPermission(ctx, "exit:read"),
+  };
+  const [history, salaries, leaves, exits] = await Promise.all([
+    getHistory(ctx, employeeId),
+    can.salary ? repo.timelineSalaries(employeeId) : null,
+    can.leaves ? repo.timelineLeaves(employeeId) : null,
+    can.exits ? repo.timelineExits(employeeId) : null,
+  ]);
+  const events = buildTimeline({
+    hireDate: employee.hireDate,
+    history,
+    salaries,
+    leaves,
+    exits,
+    canSeeHealth: hasPermission(ctx, "document.sensitive:read"),
+  });
+  const kinds = TIMELINE_KIND_FILTER[tipo];
+  return {
+    tipo,
+    sources: can,
+    events: kinds ? events.filter((e) => kinds.includes(e.kind)) : events,
+  };
 }
 
 /* ----------------------------------------------------------------------------
@@ -485,6 +523,11 @@ export async function updateEmployee(ctx: ActorContext, id: string, input: unkno
     if (!current) throw new NotFoundError("El legajo no existe.");
     if (current.version !== meta.version) throw staleError();
     await validateAgainstDatabase(tx, record, current);
+    if (current.exitDate && record.hireDate > current.exitDate) {
+      throw new ValidationError(undefined, {
+        hireDate: [`No puede ser posterior al egreso (${formatDate(current.exitDate)}).`],
+      });
+    }
 
     const historyChanged = HISTORIC_FIELD_NAMES.some((f) => !sameValue(current[f], record[f]));
     let effectiveDate: Date | null = null;

@@ -182,3 +182,10 @@ export const employeeListQuerySchema = baseListQuerySchema.extend({
   sort: z.enum(["apellido", "legajo", "ingreso"]).catch("apellido").default("apellido"),
 });
 export type EmployeeListQuery = z.output<typeof employeeListQuerySchema>;
+
+/** Línea de tiempo del legajo: qué clase de hechos mostrar. */
+export const TIMELINE_FILTERS = ["todos", "laborales", "salariales", "licencias", "egresos"] as const;
+export type TimelineFilter = (typeof TIMELINE_FILTERS)[number];
+export const timelineQuerySchema = z.object({
+  tipo: z.enum(TIMELINE_FILTERS).catch("todos").default("todos"),
+});

@@ -60,6 +60,11 @@ export const documentLeaveSchema = z.object({
   leaveRecordId: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.uuid().nullable()),
 });
 
+/** Egreso al que se vincula el documento (telegrama, renuncia, constancias). */
+export const documentExitSchema = z.object({
+  exitId: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.uuid().nullable()),
+});
+
 /** Edición: `version` es el `updatedAt` leído, para detectar cambios simultáneos. */
 export const documentVersionSchema = z.object({ version: z.iso.datetime() });
 
