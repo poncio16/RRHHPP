@@ -2,7 +2,7 @@
 
 Aplicación web de gestión de personal para una PyME argentina: legajos, documentación, licencias, vacaciones, asistencia, remuneraciones informadas, novedades, egresos, reportes y auditoría.
 
-> **Estado:** en desarrollo por fases. Fase actual: **7 — licencias, ausencias y vacaciones**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
+> **Estado:** en desarrollo por fases. Fase actual: **8 — asistencia y horarios**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
 
 - Diseño técnico aprobado: [docs/arquitectura.md](docs/arquitectura.md)
 - El sistema **no** liquida sueldos ni emite comprobantes fiscales: registra la información que informa el sistema de liquidación de la empresa.
@@ -150,6 +150,19 @@ En **Licencias y ausencias** (menú) se registran licencias, ausencias, vacacion
 - **Permisos**: "Ver licencias, ausencias y vacaciones" para consultar, "Registrar licencias, ausencias y vacaciones" para cargar, editar y anular solicitudes y generar o ajustar saldos, "Aprobar o rechazar solicitudes" para decidir y editar aprobadas, y "Ver datos de salud" para ver los tipos marcados como dato de salud (sin ese permiso se muestran como "Licencia (dato reservado)", sin observaciones ni acciones).
 
 La generación de novedades para liquidación llega con la Fase 9 y los indicadores de ausentismo y alertas, con la Fase 11.
+
+## Asistencia
+
+En **Asistencia** (menú) la **Planilla diaria** muestra, para un día, a todo el personal en funciones con lo que se esperaba (turno del horario, franco, feriado o licencia) y permite cargar entrada, salida, descanso u "ausente" de varios empleados a la vez; se guardan juntas solo las filas modificadas, y si alguna tiene un problema no se guarda ninguna. **Registros** lista los días cargados con filtros (presentes, ausentes, llegadas tarde, horas adicionales, con licencia, francos y feriados) y totales. La pestaña **Asistencia** de cada legajo muestra el mes del empleado.
+
+- **Estado del día**: se deriva, no se elige. Con una licencia aprobada que cubre el día queda "Con licencia" y no admite horarios; con entrada y salida, "Presente"; sin horarios, "Franco" o "Feriado" según el horario y el calendario, o "Ausente" en un día de trabajo.
+- **Horas**: trabajadas = de la entrada a la salida menos el descanso (por defecto, el del horario de ese día). En un día del horario, las normales llegan hasta lo previsto y el excedente es adicional; la llegada tarde cuenta todos los minutos después del inicio del turno. Un franco o feriado trabajado es todo adicional; un empleado sin horario asignado tiene todo como normal y sin llegadas tarde. Una salida igual o anterior a la entrada es del día siguiente.
+- **Parámetros** (Configuración → Parámetros → Asistencia): tolerancia de llegada tarde y mínimo de minutos para contar horas adicionales. Ambos arrancan en 0; definirlos con la política de la empresa o el convenio.
+- **Licencias**: no se puede aprobar una licencia sobre días con presencia cargada; al aprobar, editar o anular una licencia aprobada se actualizan los días ya cargados sin horarios.
+- **Límites**: no se cargan días futuros ni fuera del período en que el empleado trabajó en la empresa. Las horas se interpretan en la zona horaria de Buenos Aires.
+- **Permisos**: "Ver asistencia y horarios" para consultar y "Registrar asistencia" para cargar y corregir.
+
+La carga es manual. La importación desde relojes o archivos de fichadas queda preparada (cada día guarda su origen) pero no está implementada. Las novedades de horas adicionales y llegadas tarde llegan con la Fase 9 y el ausentismo y las alertas, con la Fase 11.
 
 ## Seguridad
 

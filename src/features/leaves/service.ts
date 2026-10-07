@@ -1,4 +1,5 @@
 import "server-only";
+import { assertNoPresence, spanOf, syncWithLeaves } from "@/features/attendance/service";
 import type { Prisma } from "@/generated/prisma/client";
 import { formatDate, parseIsoDate, todayInTimeZone, toIsoDate } from "@/lib/format";
 import { paginate } from "@/lib/list/query";
@@ -378,7 +379,10 @@ export async function createLeave(ctx: ActorContext, employeeId: string | null, 
     await repo.lockEmployee(employee.id, tx);
     const evaluation = await evaluate(employee, type, data, null, tx);
     throwIfInvalid(evaluation);
-    if (approve) assertBalanceForApproval(evaluation);
+    if (approve) {
+      assertBalanceForApproval(evaluation);
+      await assertNoPresence(employee.id, evaluation.start, evaluation.end, tx);
+    }
     const record = await repo.createLeave(
       {
         employeeId: employee.id,
@@ -407,6 +411,7 @@ export async function createLeave(ctx: ActorContext, employeeId: string | null, 
       },
       tx,
     );
+    if (approve) await syncWithLeaves(employee.id, record.startDate, record.endDate, tx);
     return { id: record.id, warnings: evaluation.warnings };
   });
 }
@@ -446,7 +451,10 @@ export async function updateLeave(ctx: ActorContext, id: string, input: unknown)
     await repo.lockEmployee(employee.id, tx);
     const evaluation = await evaluate(employee, type, data, id, tx);
     throwIfInvalid(evaluation);
-    if (record.status === "APROBADA") assertBalanceForApproval(evaluation);
+    if (record.status === "APROBADA") {
+      assertBalanceForApproval(evaluation);
+      await assertNoPresence(employee.id, evaluation.start, evaluation.end, tx);
+    }
     const next = {
       leaveTypeId: type.id,
       startDate: evaluation.start,
@@ -471,6 +479,13 @@ export async function updateLeave(ctx: ActorContext, id: string, input: unknown)
         },
         tx,
       );
+    }
+    if (record.status === "APROBADA") {
+      const range = spanOf(
+        { start: record.startDate, end: record.endDate },
+        { start: next.startDate, end: next.endDate },
+      );
+      await syncWithLeaves(employee.id, range.start, range.end, tx);
     }
     return evaluation.warnings;
   });
@@ -507,6 +522,7 @@ export async function decideLeave(ctx: ActorContext, id: string, input: unknown)
       );
       throwIfInvalid(evaluation);
       assertBalanceForApproval(evaluation);
+      await assertNoPresence(employee.id, evaluation.start, evaluation.end, tx);
       days = evaluation.days;
     }
     const ok = await repo.updateLeaveVersioned(
@@ -536,6 +552,7 @@ export async function decideLeave(ctx: ActorContext, id: string, input: unknown)
       },
       tx,
     );
+    if (decision === "APROBADA") await syncWithLeaves(employee.id, record.startDate, record.endDate, tx);
   });
 }
 
@@ -572,5 +589,6 @@ export async function annulLeave(ctx: ActorContext, id: string, input: unknown) 
       },
       tx,
     );
+    if (record.status === "APROBADA") await syncWithLeaves(employee.id, record.startDate, record.endDate, tx);
   });
 }

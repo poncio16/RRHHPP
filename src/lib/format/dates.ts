@@ -65,3 +65,40 @@ function makeDate(year: number, month: number, day: number): Date | null {
   const valid = date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
   return valid ? date : null;
 }
+
+/** Minutos que la zona horaria está adelantada respecto de UTC en ese instante (Argentina: −180). */
+function zoneOffsetMinutes(instant: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(instant);
+  const get = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((p) => p.type === type)?.value);
+  const local = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"));
+  return Math.round((local - Math.floor(instant / 60_000) * 60_000) / 60_000);
+}
+
+/**
+ * Instante de una hora local: el día `date` (medianoche UTC) más `minutes`
+ * minutos, en la zona horaria indicada. `minutes` puede pasar de 1440 (día siguiente).
+ */
+export function zonedInstant(date: Date, minutes: number, timeZone = DEFAULT_TIMEZONE): Date {
+  const guess = date.getTime() + minutes * 60_000;
+  const offset = zoneOffsetMinutes(guess, timeZone);
+  const instant = guess - offset * 60_000;
+  // Si justo cambia el horario de verano, el segundo cálculo corrige el desfase.
+  const corrected = zoneOffsetMinutes(instant, timeZone);
+  return new Date(corrected === offset ? instant : guess - corrected * 60_000);
+}
+
+/** Instante → "HH:mm" en la zona horaria indicada. */
+export function formatTime(instant: Date | null | undefined, timeZone = DEFAULT_TIMEZONE): string {
+  if (!instant) return "";
+  return new Intl.DateTimeFormat("es-AR", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(
+    instant,
+  );
+}

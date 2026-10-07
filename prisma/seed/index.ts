@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../src/generated/prisma/client";
 import { LOOKUP_VALUES, PROVINCES } from "./reference-data";
+import { seedAttendance } from "./attendance";
 import { seedDocuments } from "./documents";
 import { seedEmployees } from "./employees";
 import { seedLeaves } from "./leaves";
@@ -31,6 +32,7 @@ async function main() {
     const employeesCreated = await seedEmployees(db);
     const documentsCreated = await seedDocuments(db);
     const leaves = await seedLeaves(db);
+    const attendance = await seedAttendance(db);
 
     const [provinces, lookupValues, roles] = await Promise.all([
       db.province.count(),
@@ -38,7 +40,7 @@ async function main() {
       db.role.count(),
     ]);
     console.log(
-      `Seed completo: ${provinces} provincias, ${lookupValues} valores de listas, ${roles} roles, ${employeesCreated} empleados, ${documentsCreated} documentos, ${leaves.types} tipos de licencia, ${leaves.balances} períodos de vacaciones y ${leaves.records} licencias nuevos.`,
+      `Seed completo: ${provinces} provincias, ${lookupValues} valores de listas, ${roles} roles, ${employeesCreated} empleados, ${documentsCreated} documentos, ${leaves.types} tipos de licencia, ${leaves.balances} períodos de vacaciones, ${leaves.records} licencias y ${attendance} días de asistencia nuevos.`,
     );
     if (security.adminCreated) {
       console.log(`Administrador inicial: ${security.email} (debe cambiar la contraseña al ingresar).`);
