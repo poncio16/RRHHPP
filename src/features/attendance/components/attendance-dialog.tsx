@@ -75,7 +75,7 @@ export function AttendanceDialog({
   const form = useForm<Values>({
     resolver: zodResolver(pickEmployee ? withEmployeeSchema : attendanceDaySchema) as never,
     defaultValues: initial,
-    mode: "onBlur",
+    mode: "onSubmit",
   });
   const { errors, isDirty } = form.formState;
 

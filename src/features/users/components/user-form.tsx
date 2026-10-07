@@ -42,7 +42,7 @@ export function UserForm({
   const form = useForm<Values>({
     resolver: zodResolver(updateUserSchema),
     defaultValues: { name: "", email: "", roleId: "", isActive: true, ...defaultValues },
-    mode: "onBlur",
+    mode: "onSubmit",
   });
   const { errors, isDirty } = form.formState;
 

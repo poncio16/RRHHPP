@@ -57,7 +57,7 @@ export function ScheduleDialog({
   const form = useForm<Values>({
     resolver: zodResolver(scheduleSchema) as never,
     defaultValues: initial,
-    mode: "onBlur",
+    mode: "onSubmit",
   });
   const { errors, isDirty } = form.formState;
   const days = useWatch({ control: form.control, name: "days" });

@@ -79,7 +79,7 @@ export function EmployeeForm({
   const form = useForm<Values>({
     resolver: zodResolver(employeeSchema) as never,
     defaultValues: initial,
-    mode: "onBlur",
+    mode: "onSubmit",
   });
   const { isDirty, dirtyFields } = form.formState;
   useUnsavedChanges(isDirty && !pending);

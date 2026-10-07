@@ -86,6 +86,15 @@ enum SalaryConceptKind {
   OTRO
 }
 
+/// Hechos de otros módulos que generan novedades (cada uno, con un único tipo de novedad).
+enum NoveltyOrigin {
+  HORAS_EXTRAS
+  LLEGADAS_TARDE
+  AUSENCIAS
+  CAMBIO_SALARIAL
+  CAMBIO_CATEGORIA
+}
+
 enum NoveltyStatus {
   PENDIENTE
   APROBADA
@@ -955,18 +964,20 @@ model Document {
 // ============================================================
 
 model NoveltyType {
-  id               String        @id @default(uuid(7)) @db.Uuid
-  name             String        @unique
+  id               String         @id @default(uuid(7)) @db.Uuid
+  name             String         @unique
   nature           ConceptNature
-  requiresAmount   Boolean       @default(false) @map("requires_amount")
-  requiresQuantity Boolean       @default(false) @map("requires_quantity")
-  quantityUnit     String?       @map("quantity_unit")
-  isActive         Boolean       @default(true) @map("is_active")
-  sortOrder        Int           @default(0) @map("sort_order")
-  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
-  createdById      String?       @map("created_by_id") @db.Uuid
-  updatedById      String?       @map("updated_by_id") @db.Uuid
+  requiresAmount   Boolean        @default(false) @map("requires_amount")
+  requiresQuantity Boolean        @default(false) @map("requires_quantity")
+  quantityUnit     String?        @map("quantity_unit")
+  /// Asistencia o legajo: qué hecho genera novedades de este tipo.
+  generatedFrom    NoveltyOrigin? @unique @map("generated_from")
+  isActive         Boolean        @default(true) @map("is_active")
+  sortOrder        Int            @default(0) @map("sort_order")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  createdById      String?        @map("created_by_id") @db.Uuid
+  updatedById      String?        @map("updated_by_id") @db.Uuid
 
   novelties  Novelty[]
   leaveTypes LeaveType[]
@@ -997,9 +1008,9 @@ model Novelty {
   noveltyType NoveltyType @relation(fields: [noveltyTypeId], references: [id], onDelete: Restrict)
   createdBy   User        @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
+  @@unique([sourceType, sourceId, period], map: "novelty_source_period_key")
   @@index([employeeId])
   @@index([period, status])
-  @@index([sourceType, sourceId])
   @@map("novelty")
 }
 

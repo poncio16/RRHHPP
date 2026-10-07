@@ -7,6 +7,8 @@
  */
 
 import { COUNTING_MODE_LABELS, LEAVE_CLASS_LABELS } from "@/features/leaves/constants";
+import { NOVELTY_ORIGIN_LABELS } from "@/features/novelties/constants";
+import { CONCEPT_NATURE_LABELS, SALARY_CONCEPT_KIND_LABELS } from "@/features/salaries/constants";
 
 /** Origen de las opciones de un campo de referencia. */
 export type RefSource = { kind: "catalog"; key: CatalogKey } | { kind: "province" } | { kind: "lookup"; group: string };
@@ -44,6 +46,8 @@ export type CatalogField =
       options: readonly { value: string; label: string }[];
       /** Solo se elige en el alta; después no se puede cambiar. */
       immutable?: boolean;
+      /** Admite quedar vacío ("Ninguno"). */
+      optional?: boolean;
       hint?: string;
       inList?: boolean;
     }
@@ -87,6 +91,7 @@ export const CATALOG_SECTIONS = {
   seguridadSocial: "Seguridad social y bancos",
   documentacion: "Documentación",
   tiempo: "Licencias y ausencias",
+  remuneraciones: "Remuneraciones y novedades",
   listas: "Listas",
 } as const;
 export type CatalogSection = keyof typeof CATALOG_SECTIONS;
@@ -144,6 +149,8 @@ export const CATALOG_KEYS = [
   "bancos",
   "tipos-documento",
   "tipos-licencia",
+  "tipos-novedad",
+  "conceptos-salariales",
   "estado-civil",
   "nacionalidades",
   "modalidades",
@@ -422,6 +429,76 @@ export const CATALOGS: Record<CatalogKey, CatalogDefinition> = {
         label: "Dato de salud (sensible)",
         type: "boolean",
         hint: "Por ejemplo, enfermedad o accidente. Sin el permiso de datos de salud se ve como licencia reservada.",
+        inList: true,
+      },
+      {
+        name: "generatesNoveltyTypeId",
+        label: "Genera novedad",
+        type: "ref",
+        source: { kind: "catalog", key: "tipos-novedad" },
+        relation: "generatesNoveltyType",
+        hint: "Opcional. Al generar las novedades de un período, cada registro aprobado da una novedad de este tipo con los días del mes.",
+      },
+    ],
+  },
+  "tipos-novedad": {
+    key: "tipos-novedad",
+    title: "Tipos de novedad",
+    singular: "tipo de novedad",
+    description: "Novedades hacia la liquidación: qué datos piden y qué hechos las generan.",
+    section: "remuneraciones",
+    fields: [
+      name(),
+      {
+        name: "nature",
+        label: "Naturaleza",
+        type: "choice",
+        options: Object.entries(CONCEPT_NATURE_LABELS).map(([value, label]) => ({ value, label })),
+        hint: "Haber o descuento suman en los totales de importes; informativo no.",
+        inList: true,
+      },
+      { name: "requiresAmount", label: "Requiere importe", type: "boolean", inList: true },
+      { name: "requiresQuantity", label: "Requiere cantidad", type: "boolean", inList: true },
+      {
+        name: "quantityUnit",
+        label: "Unidad de la cantidad",
+        type: "text",
+        max: 20,
+        hint: "Por ejemplo, horas, días o veces.",
+        inList: true,
+      },
+      {
+        name: "generatedFrom",
+        label: "Se genera desde",
+        type: "choice",
+        optional: true,
+        options: Object.entries(NOVELTY_ORIGIN_LABELS).map(([value, label]) => ({ value, label })),
+        hint: "Opcional. Al generar las novedades de un período se crean las de este tipo a partir de ese hecho. Cada hecho genera un solo tipo.",
+        inList: true,
+      },
+    ],
+  },
+  "conceptos-salariales": {
+    key: "conceptos-salariales",
+    title: "Conceptos salariales",
+    singular: "concepto salarial",
+    description: "Conceptos de los renglones de los resúmenes informados por el sistema de liquidación.",
+    section: "remuneraciones",
+    fields: [
+      name(),
+      {
+        name: "nature",
+        label: "Naturaleza",
+        type: "choice",
+        options: Object.entries(CONCEPT_NATURE_LABELS).map(([value, label]) => ({ value, label })),
+        hint: "Los haberes se comparan con el bruto informado y los descuentos, con los descuentos informados.",
+        inList: true,
+      },
+      {
+        name: "kind",
+        label: "Clase",
+        type: "choice",
+        options: Object.entries(SALARY_CONCEPT_KIND_LABELS).map(([value, label]) => ({ value, label })),
         inList: true,
       },
     ],

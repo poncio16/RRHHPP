@@ -38,7 +38,7 @@ export function BalanceDialog({
   const form = useForm<Values>({
     resolver: zodResolver(balanceSchema) as never,
     defaultValues: balance.values,
-    mode: "onBlur",
+    mode: "onSubmit",
   });
   const { errors, isDirty } = form.formState;
   const [adjustment, carried] = useWatch({ control: form.control, name: ["adjustmentDays", "carriedOverDays"] });
