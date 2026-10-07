@@ -2,13 +2,14 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../src/generated/prisma/client";
 import { LOOKUP_VALUES, PROVINCES } from "./reference-data";
+import { seedEmployees } from "./employees";
 import { seedOrganization } from "./organization";
 import { seedSecurity } from "./security";
 
 /**
  * Seed idempotente: se puede ejecutar varias veces sin duplicar datos ni
  * pisar cambios hechos desde la aplicación (solo crea lo que falta).
- * Cada fase agrega sus datos (empleados de demostración en la Fase 5).
+ * Cada fase agrega sus datos de demostración.
  */
 async function main() {
   const url = process.env.DATABASE_URL;
@@ -25,13 +26,16 @@ async function main() {
 
     const security = await seedSecurity(db);
     await seedOrganization(db);
+    const employeesCreated = await seedEmployees(db);
 
     const [provinces, lookupValues, roles] = await Promise.all([
       db.province.count(),
       db.lookupValue.count(),
       db.role.count(),
     ]);
-    console.log(`Seed completo: ${provinces} provincias, ${lookupValues} valores de listas, ${roles} roles.`);
+    console.log(
+      `Seed completo: ${provinces} provincias, ${lookupValues} valores de listas, ${roles} roles, ${employeesCreated} empleados nuevos.`,
+    );
     if (security.adminCreated) {
       console.log(`Administrador inicial: ${security.email} (debe cambiar la contraseña al ingresar).`);
     }
