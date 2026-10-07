@@ -14,11 +14,13 @@ export function EmployeeHeader({
   current,
   canEdit,
   canSeeBank,
+  canSeeDocuments,
 }: {
   employee: EmployeeView;
-  current: "datos" | "bancarios" | "historial";
+  current: "datos" | "bancarios" | "documentacion" | "historial";
   canEdit: boolean;
   canSeeBank: boolean;
+  canSeeDocuments: boolean;
 }) {
   const base = `/empleados/${employee.id}`;
   const active = employee.status === "ACTIVO";
@@ -26,6 +28,7 @@ export function EmployeeHeader({
   const tabs = [
     { href: base, label: "Datos" },
     ...(canSeeBank ? [{ href: `${base}/bancarios`, label: "Datos bancarios" }] : []),
+    ...(canSeeDocuments ? [{ href: `${base}/documentacion`, label: "Documentación" }] : []),
     { href: `${base}/historial`, label: "Historial laboral" },
   ];
   const currentHref = current === "datos" ? base : `${base}/${current}`;

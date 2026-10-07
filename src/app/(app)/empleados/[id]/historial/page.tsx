@@ -30,7 +30,13 @@ async function Content({ params }: { params: PageProps<"/empleados/[id]/historia
 
   return (
     <>
-      <EmployeeHeader employee={employee} current="historial" canEdit={page.canEdit} canSeeBank={page.canSeeBank} />
+      <EmployeeHeader
+        employee={employee}
+        current="historial"
+        canEdit={page.canEdit}
+        canSeeBank={page.canSeeBank}
+        canSeeDocuments={page.canSeeDocuments}
+      />
       <Card>
         {rows.length === 0 ? (
           <EmptyState

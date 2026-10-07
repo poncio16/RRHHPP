@@ -48,15 +48,17 @@ describe("idempotencia de los esquemas", () => {
             ? true
             : f.type === "hours"
               ? "40"
-              : f.type === "ref"
-                ? ""
-                : f.name === "code"
-                  ? key === "bancos"
-                    ? "011"
-                    : "ABC"
-                  : f.name === "rnosCode"
-                    ? "123456"
-                    : "Valor",
+              : f.type === "days"
+                ? "30"
+                : f.type === "ref"
+                  ? ""
+                  : f.name === "code"
+                    ? key === "bancos"
+                      ? "011"
+                      : "ABC"
+                    : f.name === "rnosCode"
+                      ? "123456"
+                      : "Valor",
         ]),
       );
       const once = schema.parse(raw);
