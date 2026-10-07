@@ -1,4 +1,5 @@
 import "server-only";
+import { exportAuditLog } from "@/features/audit/service";
 import { exportEmployeeList } from "@/features/employees/service";
 import { exportNovelties } from "@/features/novelties/service";
 import { toIsoDate, todayInTimeZone } from "@/lib/format";
@@ -15,6 +16,7 @@ import type { ReportResult } from "./table";
 const LISTS = {
   empleados: { module: "empleados", run: exportEmployeeList },
   novedades: { module: "novedades", run: exportNovelties },
+  auditoria: { module: "auditoria", run: exportAuditLog },
 } as const;
 
 export type ExportFormat = "csv" | "xlsx";
