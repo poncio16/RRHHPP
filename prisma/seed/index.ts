@@ -2,13 +2,13 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../src/generated/prisma/client";
 import { LOOKUP_VALUES, PROVINCES } from "./reference-data";
+import { seedOrganization } from "./organization";
 import { seedSecurity } from "./security";
 
 /**
  * Seed idempotente: se puede ejecutar varias veces sin duplicar datos ni
  * pisar cambios hechos desde la aplicación (solo crea lo que falta).
- * Cada fase agrega sus datos (empresa y catálogos en la Fase 4, empleados
- * de demostración en la Fase 5).
+ * Cada fase agrega sus datos (empleados de demostración en la Fase 5).
  */
 async function main() {
   const url = process.env.DATABASE_URL;
@@ -24,6 +24,7 @@ async function main() {
     await db.lookupValue.createMany({ data: lookups, skipDuplicates: true });
 
     const security = await seedSecurity(db);
+    await seedOrganization(db);
 
     const [provinces, lookupValues, roles] = await Promise.all([
       db.province.count(),

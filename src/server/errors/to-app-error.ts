@@ -10,6 +10,9 @@ const UNIQUE_MESSAGES: Record<string, string> = {
   email: "Ya existe un registro con ese email.",
   name: "Ya existe un registro con ese nombre.",
   code: "Ya existe un registro con ese código.",
+  number: "Ya existe un registro con ese número.",
+  rnos_code: "Ya existe una obra social con ese código RNOS.",
+  date: "Ya hay un feriado cargado en esa fecha.",
 };
 
 export function zodToFieldErrors(error: ZodError): FieldErrors {
