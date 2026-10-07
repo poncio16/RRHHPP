@@ -162,6 +162,43 @@ export const SETTING_DEFINITIONS = {
       extraMinimumMinutes: z.number().int().min(0).max(240).default(0),
     }),
   },
+  alerts: {
+    title: "Alertas",
+    description:
+      "Anticipación de los avisos del inicio y de Alertas. Los vencimientos de documentos usan la anticipación de Documentación o la de cada tipo.",
+    fields: [
+      {
+        name: "leaveEndingDays",
+        label: "Licencias que terminan dentro de",
+        unit: "días",
+        hint: "Entre 0 y 90. 0 desactiva el aviso.",
+      },
+      {
+        name: "vacationStartingDays",
+        label: "Vacaciones que empiezan dentro de",
+        unit: "días",
+        hint: "Entre 0 y 90. 0 desactiva el aviso.",
+      },
+      {
+        name: "birthdayDays",
+        label: "Cumpleaños dentro de",
+        unit: "días",
+        hint: "Entre 0 y 60. 0 desactiva el aviso.",
+      },
+      {
+        name: "contractEndingDays",
+        label: "Contratos a plazo que terminan dentro de",
+        unit: "días",
+        hint: "Entre 0 y 180. 0 desactiva el aviso.",
+      },
+    ] satisfies SettingFieldMeta[],
+    schema: z.object({
+      leaveEndingDays: z.number().int().min(0).max(90).default(7),
+      vacationStartingDays: z.number().int().min(0).max(90).default(15),
+      birthdayDays: z.number().int().min(0).max(60).default(15),
+      contractEndingDays: z.number().int().min(0).max(180).default(30),
+    }),
+  },
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFINITIONS;

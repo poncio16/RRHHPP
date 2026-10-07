@@ -2,7 +2,7 @@
 
 Aplicación web de gestión de personal para una PyME argentina: legajos, documentación, licencias, vacaciones, asistencia, remuneraciones informadas, novedades, egresos, reportes y auditoría.
 
-> **Estado:** en desarrollo por fases. Fase actual: **10 — egresos, reingresos e historial**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
+> **Estado:** en desarrollo por fases. Fase actual: **11 — inicio con indicadores y alertas**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
 
 - Diseño técnico aprobado: [docs/arquitectura.md](docs/arquitectura.md)
 - El sistema **no** liquida sueldos ni emite comprobantes fiscales: registra la información que informa el sistema de liquidación de la empresa.
@@ -198,7 +198,35 @@ En **Egresos** (menú) se registran y siguen las bajas de todo el personal; la p
 - **Línea de tiempo**: une ingreso, cambios laborales, básicos, licencias aprobadas, egresos y reingresos, del más reciente al más antiguo y con filtro por tipo. Cada parte se muestra solo con el permiso de su módulo; las licencias marcadas como dato de salud aparecen como "Licencia (dato reservado)".
 - **Permisos**: "Ver egresos" para consultar y "Registrar egresos y reingresos" para cargar, confirmar, anular y reingresar.
 
-Los egresos del seed son ficticios: uno confirmado y uno en trámite. Los egresos recientes del inicio llegan con el dashboard (Fase 11) y el reporte de altas y bajas, con los reportes (Fase 12).
+Los egresos del seed son ficticios: uno confirmado y uno en trámite. Los egresos del mes se ven en el inicio; el reporte de altas y bajas llega con los reportes (Fase 12).
+
+## Inicio
+
+El **Inicio** muestra indicadores calculados en el momento con los datos cargados. Cada bloque aparece solo si el rol tiene el permiso del módulo de donde sale el dato.
+
+- **Hoy**: personal activo (con suspendidos hoy, egresados y total de legajos), antigüedad promedio desde la fecha de antigüedad reconocida, licencias en curso, días de vacaciones pendientes (períodos hasta el año actual) y alertas pendientes.
+- **Movimientos del mes**: se elige el mes con las flechas (no hay meses futuros). Ingresos (fecha de ingreso o reingreso en el mes), egresos confirmados y ausentismo, con sus listas.
+- **Ausentismo** = días de trabajo perdidos ÷ días de trabajo previstos. Pierden días las ausencias cargadas en asistencia y las licencias aprobadas de tipos marcados "Cuenta para el ausentismo" (Configuración → Catálogos → Tipos de licencia); un mismo día cuenta una vez. Los días previstos son los hábiles de cada persona según su horario (o los días por defecto de Parámetros → Licencias), sin feriados y dentro de su período de empleo. En el mes en curso se mide hasta hoy.
+- **Distribución** del personal activo por sector, puesto, tipo de contratación y modalidad de trabajo, en barras con cantidad y porcentaje.
+- **En curso y próximos**: licencias en curso, próximas vacaciones, documentos por vencer y cumpleaños (estas tres según la anticipación de las alertas), y las alertas pendientes por tipo.
+
+## Alertas
+
+**Alertas** (menú) lista los avisos del día. No hay tareas programadas ni correos: se calculan cada vez que se abre la pantalla o el inicio.
+
+| Alerta                                   | Cuándo aparece                                                                                                                                                         | Permiso para verla   |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| Documentos por vencer o vencidos         | Según la anticipación del tipo de documento o la general (Parámetros → Documentación). Un documento renovado (otro del mismo tipo con vencimiento posterior) no avisa. | Ver documentación    |
+| Licencias que terminan                   | Licencias aprobadas (no vacaciones) que terminan dentro de la anticipación.                                                                                            | Ver licencias        |
+| Vacaciones próximas                      | Vacaciones aprobadas que empiezan dentro de la anticipación.                                                                                                           | Ver licencias        |
+| Vacaciones pendientes de años anteriores | Períodos de años anteriores con días sin tomar.                                                                                                                        | Ver licencias        |
+| Contratos a plazo que terminan           | Fecha de fin de contrato dentro de la anticipación o ya pasada.                                                                                                        | Ver empleados        |
+| Cumpleaños                               | Dentro de la anticipación.                                                                                                                                             | Ver datos personales |
+| Legajos incompletos                      | Falta horario, obra social, ART y, según lo que se pueda ver, teléfono o email, contacto de emergencia, cuenta sueldo o sueldo básico.                                 | Ver empleados        |
+
+- **Anticipación**: en Configuración → Parámetros → Alertas (días para licencias, vacaciones, cumpleaños y contratos; 0 desactiva el aviso).
+- **Posponer 7 días** o **Descartar**: vale para todos los usuarios y queda en la auditoría. Se puede volver a pendientes desde los filtros "Pospuestas" y "Descartadas". Si cambia el dato que originó el aviso (por ejemplo, una nueva fecha de vencimiento), es una alerta nueva y vuelve a aparecer. Hace falta el permiso de escritura del módulo de origen.
+- Los datos de salud se muestran como reservados sin el permiso "Ver documentación sensible".
 
 ## Seguridad
 
