@@ -37,6 +37,15 @@ export type CatalogField =
   | {
       name: string;
       label: string;
+      /** Cantidad de días opcional (entero de 1 a `max`). */
+      type: "days";
+      max: number;
+      hint?: string;
+      inList?: boolean;
+    }
+  | {
+      name: string;
+      label: string;
       type: "ref";
       source: RefSource;
       /** Relación de Prisma con la que se lee la etiqueta en el listado. */
@@ -63,6 +72,7 @@ export const CATALOG_SECTIONS = {
   estructura: "Estructura de la empresa",
   contratacion: "Contratación",
   seguridadSocial: "Seguridad social y bancos",
+  documentacion: "Documentación",
   listas: "Listas",
 } as const;
 export type CatalogSection = keyof typeof CATALOG_SECTIONS;
@@ -118,6 +128,7 @@ export const CATALOG_KEYS = [
   "obras-sociales",
   "art",
   "bancos",
+  "tipos-documento",
   "estado-civil",
   "nacionalidades",
   "modalidades",
@@ -295,6 +306,46 @@ export const CATALOGS: Record<CatalogKey, CatalogDefinition> = {
         pattern: "^\\d{3}$",
         patternMessage: "El código de entidad tiene 3 dígitos.",
         hint: "Los 3 primeros dígitos del CBU.",
+        inList: true,
+      },
+    ],
+  },
+  "tipos-documento": {
+    key: "tipos-documento",
+    title: "Tipos de documento",
+    singular: "tipo de documento",
+    description: "Documentación del legajo, con vencimiento y anticipación del aviso.",
+    section: "documentacion",
+    fields: [
+      name(),
+      {
+        name: "requiresExpiry",
+        label: "Tiene vencimiento",
+        type: "boolean",
+        hint: "Al cargar el documento se pide la fecha de vencimiento.",
+        inList: true,
+      },
+      {
+        name: "defaultValidityDays",
+        label: "Vigencia habitual (días)",
+        type: "days",
+        max: 3650,
+        hint: "Opcional. Sugiere el vencimiento a partir de la fecha de emisión.",
+        inList: true,
+      },
+      {
+        name: "alertDaysBefore",
+        label: "Avisar con anticipación (días)",
+        type: "days",
+        max: 365,
+        hint: "Opcional. Si se deja vacío se usa el valor general de Parámetros.",
+        inList: true,
+      },
+      {
+        name: "isSensitive",
+        label: "Documentación sensible",
+        type: "boolean",
+        hint: "Datos de salud (certificados médicos, preocupacionales): solo la ven los roles con ese permiso.",
         inList: true,
       },
     ],

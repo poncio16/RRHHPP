@@ -6,6 +6,9 @@ import { z } from "@/lib/zod";
  * Se editan desde Configuración → Parámetros con un formulario armado a partir
  * de `fields` (todos los parámetros actuales son números enteros).
  */
+/** Tope técnico de un archivo subido (coincide con los límites de `next.config.ts`). */
+export const MAX_UPLOAD_MB = 20;
+
 export type SettingFieldMeta = { name: string; label: string; unit: string; hint?: string };
 
 export const SETTING_DEFINITIONS = {
@@ -60,6 +63,28 @@ export const SETTING_DEFINITIONS = {
         .max(24 * 60)
         .default(15),
       passwordMinLength: z.number().int().min(8).max(64).default(10),
+    }),
+  },
+  documents: {
+    title: "Documentación",
+    description: "Archivos adjuntos y aviso de vencimientos.",
+    fields: [
+      {
+        name: "maxFileSizeMb",
+        label: "Tamaño máximo de cada archivo",
+        unit: "MB",
+        hint: "Entre 1 y 20.",
+      },
+      {
+        name: "alertDaysBefore",
+        label: "Anticipación del aviso de vencimiento",
+        unit: "días",
+        hint: "Entre 1 y 365. Cada tipo de documento puede tener su propia anticipación.",
+      },
+    ] satisfies SettingFieldMeta[],
+    schema: z.object({
+      maxFileSizeMb: z.number().int().min(1).max(MAX_UPLOAD_MB).default(10),
+      alertDaysBefore: z.number().int().min(1).max(365).default(30),
     }),
   },
 } as const;

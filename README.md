@@ -125,6 +125,18 @@ En **Empleados** está el listado de legajos con búsqueda (nombre y apellido si
 
 El seed carga 24 empleados ficticios con documentos y CBU inventados (con dígitos verificadores válidos) y dos cambios de categoría de ejemplo. No pisa legajos existentes.
 
+## Documentación
+
+En **Documentación** (menú) se ven los documentos de todos los legajos y en la pestaña **Documentación** de cada legajo, los de ese empleado. Se puede buscar por empleado o legajo y filtrar por tipo, estado y vencimiento (vencidos, por vencer, vigentes, sin vencimiento).
+
+- **Tipos de documento**: se administran en Configuración → Catálogos. Cada tipo indica si tiene vencimiento obligatorio, una vigencia habitual opcional (sugiere el vencimiento a partir de la emisión), la anticipación del aviso y si es **sensible** (datos de salud). El seed carga los tipos del relevamiento sin vigencias ni anticipaciones: dependen de cada empresa.
+- **Vencimientos**: un documento es válido hasta su fecha de vencimiento inclusive y figura "por vencer" cuando faltan los días de anticipación del tipo o, si no tiene, los de Parámetros → Documentación.
+- **Archivos**: PDF, PNG o JPG, hasta el tamaño configurado en Parámetros (tope técnico 20 MB). El tipo se verifica por el contenido, el archivo se guarda en `STORAGE_DIR` con un nombre interno aleatorio y su hash SHA-256, y nunca se sirve en forma pública: se descarga por una ruta que verifica la sesión y los permisos, y cada descarga queda en la auditoría.
+- **Nada se borra**: un documento se anula con un motivo y deja de contar para los vencimientos. Al reemplazar el archivo, el anterior queda guardado.
+- **Permisos**: "Ver documentación" para consultar y descargar, "Registrar documentación" para cargar, editar y anular, y "Ver documentación sensible" para los tipos marcados como sensibles (sin ese permiso no aparecen ni se pueden descargar).
+
+En producción, `STORAGE_DIR` tiene que ser un volumen persistente incluido en los backups junto con la base de datos.
+
 ## Seguridad
 
 - **Sesiones** en base de datos: la cookie (`httpOnly`, `SameSite=Lax`, `Secure` en producción) lleva un token aleatorio de 256 bits; en la base solo se guarda su hash SHA-256. Vencen por inactividad y por duración máxima.

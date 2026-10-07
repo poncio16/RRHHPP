@@ -44,7 +44,7 @@ const listSelect = {
 export type EmployeeListRecord = Prisma.EmployeeGetPayload<{ select: typeof listSelect }>;
 
 /** Ids de empleados cuyo apellido y nombre contiene el texto, sin distinguir mayúsculas ni acentos. */
-async function idsMatchingName(text: string): Promise<string[]> {
+export async function idsMatchingName(text: string): Promise<string[]> {
   const pattern = `%${text.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   const rows = await db.$queryRaw<{ id: string }[]>`
     SELECT id FROM employee

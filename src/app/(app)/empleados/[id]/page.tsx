@@ -21,7 +21,13 @@ async function Content({ params }: { params: PageProps<"/empleados/[id]">["param
   if (!page.allowed) return <AccessDenied />;
   return (
     <>
-      <EmployeeHeader employee={page.employee} current="datos" canEdit={page.canEdit} canSeeBank={page.canSeeBank} />
+      <EmployeeHeader
+        employee={page.employee}
+        current="datos"
+        canEdit={page.canEdit}
+        canSeeBank={page.canSeeBank}
+        canSeeDocuments={page.canSeeDocuments}
+      />
       <EmployeeDetails employee={page.employee} />
     </>
   );

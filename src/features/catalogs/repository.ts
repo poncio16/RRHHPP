@@ -104,6 +104,12 @@ const TABLES: Record<CatalogKey, TableConfig> = {
     searchFields: ["name"],
     labelField: "name",
   },
+  "tipos-documento": {
+    delegate: (c) => asDelegate(c.documentType),
+    entityType: "DocumentType",
+    searchFields: ["name"],
+    labelField: "name",
+  },
   bancos: {
     delegate: (c) => asDelegate(c.bank),
     entityType: "Bank",

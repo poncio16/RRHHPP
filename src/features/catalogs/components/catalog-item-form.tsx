@@ -78,7 +78,7 @@ export function CatalogItemForm({
             </div>
           );
         }
-        const required = field.type === "hours" || field.required;
+        const required = field.type === "hours" || (field.type !== "days" && !!field.required);
         if (field.type === "ref") {
           return (
             <FormField key={field.name} id={id} label={field.label} error={error} hint={field.hint} required={required}>
@@ -107,7 +107,7 @@ export function CatalogItemForm({
             <Input
               {...fieldA11y(id, error)}
               autoComplete="off"
-              inputMode={field.type === "hours" ? "decimal" : undefined}
+              inputMode={field.type === "hours" ? "decimal" : field.type === "days" ? "numeric" : undefined}
               disabled={locked}
               {...form.register(field.name)}
             />

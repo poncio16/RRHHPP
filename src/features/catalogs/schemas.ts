@@ -35,6 +35,16 @@ function fieldSchema(field: CatalogField): z.ZodType {
       return hoursSchema;
     case "boolean":
       return z.boolean().default(false);
+    case "days":
+      return z.preprocess(
+        (v) => (v === "" || v === undefined ? null : v),
+        z.coerce
+          .number("Ingresá un número entero de días.")
+          .int("Ingresá un número entero de días.")
+          .min(1, "Debe ser al menos 1 día.")
+          .max(field.max, `No puede superar ${field.max} días.`)
+          .nullable(),
+      );
     case "ref": {
       const empty = z.literal("").transform(() => null);
       if (field.required) return z.uuid("Elegí una opción.");
