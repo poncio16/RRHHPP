@@ -44,7 +44,7 @@ async function SettingsContent() {
           </Card>
         ))}
         <p className="text-muted-foreground text-sm">
-          Los parámetros de alertas, asistencia, vacaciones y reportes se agregan acá junto con cada módulo.
+          Los parámetros de alertas, asistencia y reportes se agregan acá junto con cada módulo.
         </p>
       </div>
     </>

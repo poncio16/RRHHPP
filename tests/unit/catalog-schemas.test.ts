@@ -50,15 +50,17 @@ describe("idempotencia de los esquemas", () => {
               ? "40"
               : f.type === "days"
                 ? "30"
-                : f.type === "ref"
-                  ? ""
-                  : f.name === "code"
-                    ? key === "bancos"
-                      ? "011"
-                      : "ABC"
-                    : f.name === "rnosCode"
-                      ? "123456"
-                      : "Valor",
+                : f.type === "choice"
+                  ? f.options[0]!.value
+                  : f.type === "ref"
+                    ? ""
+                    : f.name === "code"
+                      ? key === "bancos"
+                        ? "011"
+                        : "ABC"
+                      : f.name === "rnosCode"
+                        ? "123456"
+                        : "Valor",
         ]),
       );
       const once = schema.parse(raw);

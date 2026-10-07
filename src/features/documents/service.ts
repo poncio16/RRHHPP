@@ -16,6 +16,7 @@ import {
   annulDocumentSchema,
   documentListQuerySchema,
   documentSchema,
+  documentLeaveSchema,
   documentVersionSchema,
   documentWithEmployeeSchema,
   type DocumentData,
@@ -215,13 +216,27 @@ export async function createDocument(ctx: ActorContext, employeeId: string | nul
   const employee = await repo.findEmployeeBasic(targetId);
   if (!employee) throw new NotFoundError("El legajo no existe.");
   const type = await validateType(ctx, data);
+  const { leaveRecordId } = documentLeaveSchema.parse(input);
+  if (leaveRecordId) {
+    const leave = await repo.findLeaveForDocument(leaveRecordId);
+    if (!leave || leave.employeeId !== targetId || leave.status === "ANULADA" || leave.status === "RECHAZADA") {
+      throw new ValidationError("La licencia a la que se quiere vincular el documento no está vigente.");
+    }
+  }
   const prepared = await prepareFile(file);
 
   return withStoredFile(prepared, () =>
     repo.transaction(async (tx) => {
       const fileId = await storeFileRecord(ctx, prepared, tx);
       const doc = await repo.createDocument(
-        { ...toRecord(data), employeeId: targetId, fileId, createdById: ctx.userId, updatedById: ctx.userId },
+        {
+          ...toRecord(data),
+          employeeId: targetId,
+          fileId,
+          leaveRecordId,
+          createdById: ctx.userId,
+          updatedById: ctx.userId,
+        },
         tx,
       );
       await recordAudit(
@@ -231,7 +246,7 @@ export async function createDocument(ctx: ActorContext, employeeId: string | nul
           module: MODULE,
           entityType: "Document",
           entityId: doc.id,
-          after: { employeeId: targetId, ...auditable(doc), fileName: prepared?.name ?? null },
+          after: { employeeId: targetId, ...auditable(doc), leaveRecordId, fileName: prepared?.name ?? null },
           message: `Documento "${type.name}" de ${employee.lastName}, ${employee.firstName} (legajo ${employee.fileNumber})`,
         },
         tx,

@@ -8,20 +8,26 @@ import { formatSeniority, seniority } from "../calc";
 import { STATUS_LABELS } from "../constants";
 import type { EmployeeView } from "../service";
 
+export type EmployeePageAccess = {
+  canEdit: boolean;
+  canSeeBank: boolean;
+  canSeeDocuments: boolean;
+  canSeeLeaves: boolean;
+  /** Suspensión aprobada vigente hoy: el estado "suspendido" se deriva de ella. */
+  suspension: { endDate: Date } | null;
+};
+
 /** Encabezado del legajo con datos clave y pestañas según permisos. */
 export function EmployeeHeader({
   employee,
   current,
-  canEdit,
-  canSeeBank,
-  canSeeDocuments,
+  access,
 }: {
   employee: EmployeeView;
-  current: "datos" | "bancarios" | "documentacion" | "historial";
-  canEdit: boolean;
-  canSeeBank: boolean;
-  canSeeDocuments: boolean;
+  current: "datos" | "bancarios" | "documentacion" | "licencias" | "historial";
+  access: EmployeePageAccess;
 }) {
+  const { canEdit, canSeeBank, canSeeDocuments, canSeeLeaves, suspension } = access;
   const base = `/empleados/${employee.id}`;
   const active = employee.status === "ACTIVO";
   const to = active ? todayInTimeZone() : (employee.labor.exitDate ?? todayInTimeZone());
@@ -29,6 +35,7 @@ export function EmployeeHeader({
     { href: base, label: "Datos" },
     ...(canSeeBank ? [{ href: `${base}/bancarios`, label: "Datos bancarios" }] : []),
     ...(canSeeDocuments ? [{ href: `${base}/documentacion`, label: "Documentación" }] : []),
+    ...(canSeeLeaves ? [{ href: `${base}/licencias`, label: "Licencias y vacaciones" }] : []),
     { href: `${base}/historial`, label: "Historial laboral" },
   ];
   const currentHref = current === "datos" ? base : `${base}/${current}`;
@@ -47,7 +54,11 @@ export function EmployeeHeader({
             <h1 className="text-xl font-semibold tracking-tight">
               {employee.lastName}, {employee.firstName}
             </h1>
-            <Badge variant={active ? "success" : "muted"}>{STATUS_LABELS[employee.status]}</Badge>
+            {suspension ? (
+              <Badge variant="warning">Suspendido hasta el {formatDate(suspension.endDate)}</Badge>
+            ) : (
+              <Badge variant={active ? "success" : "muted"}>{STATUS_LABELS[employee.status]}</Badge>
+            )}
           </div>
           <p className="text-muted-foreground mt-1 text-sm">
             Legajo {employee.fileNumber} · {employee.labor.position.name} · {employee.labor.department.name}

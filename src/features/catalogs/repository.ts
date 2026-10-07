@@ -110,6 +110,12 @@ const TABLES: Record<CatalogKey, TableConfig> = {
     searchFields: ["name"],
     labelField: "name",
   },
+  "tipos-licencia": {
+    delegate: (c) => asDelegate(c.leaveType),
+    entityType: "LeaveType",
+    searchFields: ["name"],
+    labelField: "name",
+  },
   bancos: {
     delegate: (c) => asDelegate(c.bank),
     entityType: "Bank",

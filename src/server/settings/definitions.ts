@@ -87,6 +87,58 @@ export const SETTING_DEFINITIONS = {
       alertDaysBefore: z.number().int().min(1).max(365).default(30),
     }),
   },
+  leaves: {
+    title: "Licencias y ausencias",
+    description: "Conteo de días hábiles de las licencias, ausencias y vacaciones.",
+    fields: [
+      {
+        name: "defaultWorkDays",
+        label: "Días hábiles por semana sin horario asignado",
+        unit: "días",
+        hint: "Entre 1 y 7, contando desde el lunes (5 = lunes a viernes). Si el empleado tiene horario, se usan sus días. Los feriados no se cuentan.",
+      },
+    ] satisfies SettingFieldMeta[],
+    schema: z.object({
+      defaultWorkDays: z.number().int().min(1).max(7).default(5),
+    }),
+  },
+  vacations: {
+    title: "Vacaciones",
+    description:
+      "Criterios para calcular los días de cada período anual. Los valores iniciales son los de referencia de la Ley de Contrato de Trabajo: validalos con el asesor laboral o el convenio.",
+    fields: [
+      {
+        name: "cutoffMonth",
+        label: "Mes de corte de la antigüedad",
+        unit: "mes",
+        hint: "1 a 12. La antigüedad de cada período se calcula a esta fecha.",
+      },
+      {
+        name: "cutoffDay",
+        label: "Día de corte de la antigüedad",
+        unit: "día",
+        hint: "1 a 31. Si el mes tiene menos días, se usa el último.",
+      },
+      {
+        name: "proportionalMinPercent",
+        label: "Mínimo trabajado para el período completo",
+        unit: "% de los días hábiles",
+        hint: "Con menos días hábiles trabajados en los doce meses previos al corte, corresponde la proporción de abajo. 0 la desactiva.",
+      },
+      {
+        name: "proportionalWorkedDays",
+        label: "Proporción: un día de vacaciones cada",
+        unit: "días trabajados",
+        hint: "Entre 1 y 365.",
+      },
+    ] satisfies SettingFieldMeta[],
+    schema: z.object({
+      cutoffMonth: z.number().int().min(1).max(12).default(12),
+      cutoffDay: z.number().int().min(1).max(31).default(31),
+      proportionalMinPercent: z.number().int().min(0).max(100).default(50),
+      proportionalWorkedDays: z.number().int().min(1).max(365).default(20),
+    }),
+  },
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFINITIONS;

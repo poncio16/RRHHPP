@@ -78,7 +78,23 @@ export function CatalogItemForm({
             </div>
           );
         }
-        const required = field.type === "hours" || (field.type !== "days" && !!field.required);
+        const required =
+          field.type === "hours" || field.type === "choice" || (field.type !== "days" && !!field.required);
+        if (field.type === "choice") {
+          const locked = field.immutable && mode === "update";
+          return (
+            <FormField key={field.name} id={id} label={field.label} error={error} hint={field.hint} required={!locked}>
+              <Select {...fieldA11y(id, error)} disabled={locked} {...form.register(field.name)}>
+                <option value="">Elegí una opción…</option>
+                {field.options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          );
+        }
         if (field.type === "ref") {
           return (
             <FormField key={field.name} id={id} label={field.label} error={error} hint={field.hint} required={required}>

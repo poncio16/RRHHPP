@@ -2,7 +2,7 @@
 
 Aplicación web de gestión de personal para una PyME argentina: legajos, documentación, licencias, vacaciones, asistencia, remuneraciones informadas, novedades, egresos, reportes y auditoría.
 
-> **Estado:** en desarrollo por fases. Fase actual: **2 — base del proyecto**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
+> **Estado:** en desarrollo por fases. Fase actual: **7 — licencias, ausencias y vacaciones**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
 
 - Diseño técnico aprobado: [docs/arquitectura.md](docs/arquitectura.md)
 - El sistema **no** liquida sueldos ni emite comprobantes fiscales: registra la información que informa el sistema de liquidación de la empresa.
@@ -133,9 +133,23 @@ En **Documentación** (menú) se ven los documentos de todos los legajos y en la
 - **Vencimientos**: un documento es válido hasta su fecha de vencimiento inclusive y figura "por vencer" cuando faltan los días de anticipación del tipo o, si no tiene, los de Parámetros → Documentación.
 - **Archivos**: PDF, PNG o JPG, hasta el tamaño configurado en Parámetros (tope técnico 20 MB). El tipo se verifica por el contenido, el archivo se guarda en `STORAGE_DIR` con un nombre interno aleatorio y su hash SHA-256, y nunca se sirve en forma pública: se descarga por una ruta que verifica la sesión y los permisos, y cada descarga queda en la auditoría.
 - **Nada se borra**: un documento se anula con un motivo y deja de contar para los vencimientos. Al reemplazar el archivo, el anterior queda guardado.
-- **Permisos**: "Ver documentación" para consultar y descargar, "Registrar documentación" para cargar, editar y anular, y "Ver documentación sensible" para los tipos marcados como sensibles (sin ese permiso no aparecen ni se pueden descargar).
+- **Permisos**: "Ver documentación" para consultar y descargar, "Registrar documentación" para cargar, editar y anular, y "Ver datos de salud" para los tipos marcados como sensibles (sin ese permiso no aparecen ni se pueden descargar).
 
 En producción, `STORAGE_DIR` tiene que ser un volumen persistente incluido en los backups junto con la base de datos.
+
+## Licencias, ausencias y vacaciones
+
+En **Licencias y ausencias** (menú) se registran licencias, ausencias, vacaciones y suspensiones de todo el personal; la pestaña **Licencias y vacaciones** de cada legajo muestra las del empleado y sus saldos. **Vacaciones** reúne las solicitudes de vacaciones y los saldos por período.
+
+- **Tipos**: se administran en Configuración → Catálogos → Tipos de licencia y ausencia. Cada tipo tiene una clase (licencia, ausencia, vacaciones o suspensión, que no se cambia una vez creado), cómo se cuentan los días (corridos u hábiles), si es con goce, si requiere certificado, topes opcionales por vez y por año, si cuenta para el ausentismo y si es un **dato de salud**. El seed carga los tipos del relevamiento con días corridos y sin topes: hay que revisarlos con el asesor laboral.
+- **Días**: corridos cuenta todos los días entre las dos fechas inclusive. Hábiles cuenta los días que el empleado trabaja según su horario (sin horario asignado, los primeros N días de la semana de Parámetros → Licencias) y descuenta los feriados, salvo los no laborables optativos.
+- **Estados**: un registro nace solicitado (o aprobado, si quien lo carga puede aprobar) y se aprueba o rechaza con motivo. Se anula con un motivo; nada se borra. No puede superponerse con otro registro solicitado o aprobado del mismo empleado. Superar un tope o el saldo da un aviso al cargar; al aprobar, el saldo insuficiente bloquea.
+- **Certificados**: si el tipo lo requiere, la lista marca "Falta certificado" hasta que se adjunta un documento desde el mismo registro.
+- **Suspendido**: no se guarda a mano; un empleado figura suspendido mientras tiene una suspensión aprobada que cubre el día de hoy (se ve en el legajo y como filtro en Empleados).
+- **Saldos de vacaciones**: uno por empleado y año. Los días se calculan con las reglas por antigüedad de Configuración → Vacaciones y los parámetros de Parámetros → Vacaciones (fecha de corte de la antigüedad y proporción cuando no se trabajó lo suficiente). "Generar períodos" muestra el cálculo antes de crear los que faltan; los existentes no cambian. Cada período admite un ajuste con motivo y días arrastrados. Las reglas y parámetros del seed son los valores de referencia de la LCT y deben validarse.
+- **Permisos**: "Ver licencias, ausencias y vacaciones" para consultar, "Registrar licencias, ausencias y vacaciones" para cargar, editar y anular solicitudes y generar o ajustar saldos, "Aprobar o rechazar solicitudes" para decidir y editar aprobadas, y "Ver datos de salud" para ver los tipos marcados como dato de salud (sin ese permiso se muestran como "Licencia (dato reservado)", sin observaciones ni acciones).
+
+La generación de novedades para liquidación llega con la Fase 9 y los indicadores de ausentismo y alertas, con la Fase 11.
 
 ## Seguridad
 

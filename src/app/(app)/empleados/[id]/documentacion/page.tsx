@@ -37,13 +37,7 @@ async function Content({ params, searchParams }: Props) {
 
   return (
     <>
-      <EmployeeHeader
-        employee={employee}
-        current="documentacion"
-        canEdit={page.canEdit}
-        canSeeBank={page.canSeeBank}
-        canSeeDocuments
-      />
+      <EmployeeHeader employee={employee} current="documentacion" access={page} />
       <Card>
         <div className="flex flex-col gap-2 p-3 lg:flex-row lg:items-center lg:justify-between">
           <DocumentFilters types={form.types} />

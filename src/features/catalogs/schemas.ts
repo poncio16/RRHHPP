@@ -45,6 +45,11 @@ function fieldSchema(field: CatalogField): z.ZodType {
           .max(field.max, `No puede superar ${field.max} días.`)
           .nullable(),
       );
+    case "choice":
+      return z.preprocess(
+        (v) => v ?? "",
+        z.enum(field.options.map((o) => o.value) as [string, ...string[]], "Elegí una opción."),
+      );
     case "ref": {
       const empty = z.literal("").transform(() => null);
       if (field.required) return z.uuid("Elegí una opción.");
@@ -61,7 +66,7 @@ function fieldSchema(field: CatalogField): z.ZodType {
 export function catalogItemSchema(def: CatalogDefinition, mode: "create" | "update") {
   const shape: Record<string, z.ZodType> = {};
   for (const field of def.fields) {
-    if (mode === "update" && field.type === "text" && field.immutable) continue;
+    if (mode === "update" && (field.type === "text" || field.type === "choice") && field.immutable) continue;
     shape[field.name] = fieldSchema(field);
   }
   return z.object(shape);

@@ -29,10 +29,14 @@ export async function listEmployees(ctx: ActorContext, rawQuery: unknown) {
   await assertPermission(ctx, "employee:read", MODULE);
   const query = employeeListQuerySchema.parse(rawQuery);
   const canSeePersonal = hasPermission(ctx, "employee.personal:read");
-  const { items, total } = await repo.listEmployees(query, canSeePersonal);
+  const { items, total } = await repo.listEmployees(query, canSeePersonal, todayInTimeZone());
   return {
     ...paginate(
-      items.map((e) => ({ ...e, dni: canSeePersonal ? e.dni : null })),
+      items.map(({ leaveRecords, ...e }) => ({
+        ...e,
+        dni: canSeePersonal ? e.dni : null,
+        suspendedUntil: e.status === "ACTIVO" ? (leaveRecords[0]?.endDate ?? null) : null,
+      })),
       total,
       query.page,
       query.pageSize,
