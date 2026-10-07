@@ -1,5 +1,6 @@
 import { ChevronLeft, Pencil } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { SectionTabs } from "@/components/layout/section-tabs";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -16,8 +17,11 @@ export type EmployeePageAccess = {
   canSeeAttendance: boolean;
   canSeeSalary: boolean;
   canSeeNovelties: boolean;
+  canSeeExits: boolean;
   /** Suspensión aprobada vigente hoy: el estado "suspendido" se deriva de ella. */
   suspension: { endDate: Date } | null;
+  /** Egreso registrado que todavía no se confirmó. */
+  pendingExit: { exitDate: Date } | null;
 };
 
 /** Encabezado del legajo con datos clave y pestañas según permisos. */
@@ -25,11 +29,14 @@ export function EmployeeHeader({
   employee,
   current,
   access,
+  actions,
 }: {
   employee: EmployeeView;
   current:
     "datos" | "bancarios" | "documentacion" | "licencias" | "asistencia" | "remuneraciones" | "novedades" | "historial";
   access: EmployeePageAccess;
+  /** Botones propios de la pestaña (por ejemplo, egreso o reingreso). */
+  actions?: ReactNode;
 }) {
   const {
     canEdit,
@@ -40,6 +47,7 @@ export function EmployeeHeader({
     canSeeSalary,
     canSeeNovelties,
     suspension,
+    pendingExit,
   } = access;
   const base = `/empleados/${employee.id}`;
   const active = employee.status === "ACTIVO";
@@ -52,7 +60,7 @@ export function EmployeeHeader({
     ...(canSeeAttendance ? [{ href: `${base}/asistencia`, label: "Asistencia" }] : []),
     ...(canSeeSalary ? [{ href: `${base}/remuneraciones`, label: "Remuneraciones" }] : []),
     ...(canSeeNovelties ? [{ href: `${base}/novedades`, label: "Novedades" }] : []),
-    { href: `${base}/historial`, label: "Historial laboral" },
+    { href: `${base}/historial`, label: "Historial" },
   ];
   const currentHref = current === "datos" ? base : `${base}/${current}`;
 
@@ -75,19 +83,30 @@ export function EmployeeHeader({
             ) : (
               <Badge variant={active ? "success" : "muted"}>{STATUS_LABELS[employee.status]}</Badge>
             )}
+            {pendingExit && (
+              <Link href={`${base}/historial`}>
+                <Badge variant="warning">Egreso en trámite: {formatDate(pendingExit.exitDate)}</Badge>
+              </Link>
+            )}
           </div>
           <p className="text-muted-foreground mt-1 text-sm">
             Legajo {employee.fileNumber} · {employee.labor.position.name} · {employee.labor.department.name}
           </p>
           <p className="text-muted-foreground text-sm">
-            Ingreso {formatDate(employee.labor.hireDate)} · Antigüedad{" "}
+            Ingreso {formatDate(employee.labor.hireDate)}
+            {employee.labor.exitDate && <> · Egreso {formatDate(employee.labor.exitDate)}</>} · Antigüedad{" "}
             {formatSeniority(seniority(employee.labor.seniorityDate, to))}
           </p>
         </div>
-        {canEdit && current === "datos" && (
-          <Link href={`${base}/editar`} className={buttonVariants({ variant: "outline" })}>
-            <Pencil /> Editar legajo
-          </Link>
+        {((canEdit && current === "datos") || actions) && (
+          <div className="flex flex-wrap gap-2">
+            {actions}
+            {canEdit && current === "datos" && (
+              <Link href={`${base}/editar`} className={buttonVariants({ variant: "outline" })}>
+                <Pencil /> Editar legajo
+              </Link>
+            )}
+          </div>
         )}
       </div>
       <SectionTabs tabs={tabs} current={currentHref} />

@@ -59,7 +59,8 @@ const withEmployeeSchema = documentSchema.and(documentWithEmployeeSchema);
 /**
  * Alta o edición de un documento. Sin `employeeId` (listado general) se elige
  * el empleado en el formulario. El archivo es opcional. Con `leave`, el
- * documento queda vinculado a esa licencia (su certificado).
+ * documento queda vinculado a esa licencia (su certificado); con `exit`, a
+ * ese egreso.
  */
 export function DocumentDialog({
   employeeId,
@@ -68,6 +69,7 @@ export function DocumentDialog({
   limits,
   document,
   leave,
+  exit,
 }: {
   employeeId: string | null;
   employees?: { id: string; label: string }[];
@@ -81,6 +83,7 @@ export function DocumentDialog({
     values: Omit<Values, "employeeId">;
   };
   leave?: { id: string; label: string };
+  exit?: { id: string; label: string };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -141,6 +144,7 @@ export function DocumentDialog({
     }
     if (document) data.set("version", document.version);
     if (leave) data.set("leaveRecordId", leave.id);
+    if (exit) data.set("exitId", exit.id);
     if (file) data.set("file", file);
     startTransition(async () => {
       const result = document
@@ -178,6 +182,15 @@ export function DocumentDialog({
           <Button variant="ghost" size="icon" aria-label={`Adjuntar certificado de ${leave.label}`}>
             <FilePlus2 />
           </Button>
+        ) : exit ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Adjuntar documento a ${exit.label}`}
+            title="Adjuntar documento"
+          >
+            <FilePlus2 />
+          </Button>
         ) : (
           <Button>
             <Plus /> Nuevo documento
@@ -187,13 +200,19 @@ export function DocumentDialog({
       <DialogContent className="max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {document ? "Editar documento" : leave ? "Adjuntar certificado" : "Nuevo documento"}
+            {document
+              ? "Editar documento"
+              : leave
+                ? "Adjuntar certificado"
+                : exit
+                  ? "Adjuntar documento al egreso"
+                  : "Nuevo documento"}
           </DialogTitle>
           <DialogDescription>
             {document
               ? document.title
-              : leave
-                ? `${leave.label}. Queda en la documentación del legajo, vinculado a este registro.`
+              : leave || exit
+                ? `${(leave ?? exit)!.label}. Queda en la documentación del legajo, vinculado a este registro.`
                 : "Registrá el documento y, si lo tenés, adjuntá el archivo."}
           </DialogDescription>
         </DialogHeader>

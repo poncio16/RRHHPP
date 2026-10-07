@@ -135,6 +135,10 @@ export async function findLeaveForDocument(id: string) {
   return db.leaveRecord.findUnique({ where: { id }, select: { employeeId: true, status: true } });
 }
 
+export async function findExitForDocument(id: string) {
+  return db.employeeExit.findUnique({ where: { id }, select: { employeeId: true, status: true } });
+}
+
 export async function createStoredFile(data: Prisma.StoredFileUncheckedCreateInput, tx: Prisma.TransactionClient) {
   return tx.storedFile.create({ data });
 }

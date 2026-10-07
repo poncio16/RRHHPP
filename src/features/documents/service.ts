@@ -16,6 +16,7 @@ import {
   annulDocumentSchema,
   documentListQuerySchema,
   documentSchema,
+  documentExitSchema,
   documentLeaveSchema,
   documentVersionSchema,
   documentWithEmployeeSchema,
@@ -223,6 +224,13 @@ export async function createDocument(ctx: ActorContext, employeeId: string | nul
       throw new ValidationError("La licencia a la que se quiere vincular el documento no está vigente.");
     }
   }
+  const { exitId } = documentExitSchema.parse(input);
+  if (exitId) {
+    const exit = await repo.findExitForDocument(exitId);
+    if (!exit || exit.employeeId !== targetId || exit.status === "ANULADO") {
+      throw new ValidationError("El egreso al que se quiere vincular el documento no está vigente.");
+    }
+  }
   const prepared = await prepareFile(file);
 
   return withStoredFile(prepared, () =>
@@ -234,6 +242,7 @@ export async function createDocument(ctx: ActorContext, employeeId: string | nul
           employeeId: targetId,
           fileId,
           leaveRecordId,
+          exitId,
           createdById: ctx.userId,
           updatedById: ctx.userId,
         },
@@ -246,7 +255,7 @@ export async function createDocument(ctx: ActorContext, employeeId: string | nul
           module: MODULE,
           entityType: "Document",
           entityId: doc.id,
-          after: { employeeId: targetId, ...auditable(doc), leaveRecordId, fileName: prepared?.name ?? null },
+          after: { employeeId: targetId, ...auditable(doc), leaveRecordId, exitId, fileName: prepared?.name ?? null },
           message: `Documento "${type.name}" de ${employee.lastName}, ${employee.firstName} (legajo ${employee.fileNumber})`,
         },
         tx,

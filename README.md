@@ -2,7 +2,7 @@
 
 Aplicación web de gestión de personal para una PyME argentina: legajos, documentación, licencias, vacaciones, asistencia, remuneraciones informadas, novedades, egresos, reportes y auditoría.
 
-> **Estado:** en desarrollo por fases. Fase actual: **9 — información salarial y novedades**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
+> **Estado:** en desarrollo por fases. Fase actual: **10 — egresos, reingresos e historial**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
 
 - Diseño técnico aprobado: [docs/arquitectura.md](docs/arquitectura.md)
 - El sistema **no** liquida sueldos ni emite comprobantes fiscales: registra la información que informa el sistema de liquidación de la empresa.
@@ -185,6 +185,20 @@ Los datos salariales del seed son ficticios.
 - **Permisos**: "Ver novedades", "Registrar novedades" (cargar, editar, aprobar, anular y generar) y "Marcar novedades como informadas". Sin "Ver información salarial", las novedades de cambios salariales se muestran sin importe.
 
 La exportación de novedades a CSV llega con los reportes de la Fase 12.
+
+## Egresos e historial
+
+En **Egresos** (menú) se registran y siguen las bajas de todo el personal; la pestaña **Historial** de cada legajo muestra sus egresos y una línea de tiempo con todo lo que pasó.
+
+- **Egreso**: se registra con fecha (último día de trabajo), tipo, motivo y observaciones, y queda **en trámite** (por ejemplo, durante un preaviso). Se confirma desde el día de egreso en adelante, o en el mismo paso si la fecha ya llegó. Al confirmar, el empleado pasa a **egresado**: el legajo no se borra y conserva toda su información. Tipos y motivos se administran en Configuración → Catálogos.
+- **Antes de confirmar**: si hay licencias, asistencia, básicos, resúmenes o novedades posteriores a la fecha de egreso, el sistema avisa cuáles son y no confirma hasta que se corrijan en su módulo. También avisa (sin bloquear) si el empleado tiene personal a cargo o un usuario del sistema activo.
+- **Documentación**: se pueden adjuntar documentos al egreso (renuncia, telegrama, constancias); quedan en la documentación del legajo.
+- **Anulación**: con motivo. Anular el egreso confirmado vigente devuelve al empleado a activo; un egreso anterior a un reingreso queda como historial y no se anula.
+- **Reingreso**: un egresado vuelve sobre el **mismo legajo** con una nueva fecha de ingreso, posterior al último egreso y no futura. La antigüedad se cuenta desde el reingreso salvo que se indique otra fecha de antigüedad reconocida. El cambio queda en el historial laboral; puesto, sector y demás datos se ajustan después en "Editar legajo".
+- **Línea de tiempo**: une ingreso, cambios laborales, básicos, licencias aprobadas, egresos y reingresos, del más reciente al más antiguo y con filtro por tipo. Cada parte se muestra solo con el permiso de su módulo; las licencias marcadas como dato de salud aparecen como "Licencia (dato reservado)".
+- **Permisos**: "Ver egresos" para consultar y "Registrar egresos y reingresos" para cargar, confirmar, anular y reingresar.
+
+Los egresos del seed son ficticios: uno confirmado y uno en trámite. Los egresos recientes del inicio llegan con el dashboard (Fase 11) y el reporte de altas y bajas, con los reportes (Fase 12).
 
 ## Seguridad
 

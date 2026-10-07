@@ -5,6 +5,7 @@ import { LOOKUP_VALUES, PROVINCES } from "./reference-data";
 import { seedAttendance } from "./attendance";
 import { seedDocuments } from "./documents";
 import { seedEmployees } from "./employees";
+import { seedExits } from "./exits";
 import { seedLeaves } from "./leaves";
 import { seedOrganization } from "./organization";
 import { seedSalaries } from "./salaries";
@@ -35,6 +36,7 @@ async function main() {
     const leaves = await seedLeaves(db);
     const attendance = await seedAttendance(db);
     const salaries = await seedSalaries(db);
+    const exits = await seedExits(db);
 
     const [provinces, lookupValues, roles] = await Promise.all([
       db.province.count(),
@@ -42,7 +44,7 @@ async function main() {
       db.role.count(),
     ]);
     console.log(
-      `Seed completo: ${provinces} provincias, ${lookupValues} valores de listas, ${roles} roles, ${employeesCreated} empleados, ${documentsCreated} documentos, ${leaves.types} tipos de licencia, ${leaves.balances} períodos de vacaciones, ${leaves.records} licencias, ${attendance} días de asistencia, ${salaries.salaries} básicos, ${salaries.payrolls} resúmenes informados y ${salaries.novelties} novedades nuevos.`,
+      `Seed completo: ${provinces} provincias, ${lookupValues} valores de listas, ${roles} roles, ${employeesCreated} empleados, ${documentsCreated} documentos, ${leaves.types} tipos de licencia, ${leaves.balances} períodos de vacaciones, ${leaves.records} licencias, ${attendance} días de asistencia, ${salaries.salaries} básicos, ${salaries.payrolls} resúmenes informados, ${salaries.novelties} novedades y ${exits} egresos nuevos.`,
     );
     if (security.adminCreated) {
       console.log(`Administrador inicial: ${security.email} (debe cambiar la contraseña al ingresar).`);
