@@ -4,7 +4,8 @@ import { LEAVE_CLASS_LABELS } from "@/features/leaves/constants";
 import { holidaysBetween } from "@/features/leaves/repository";
 import { workDaysOf } from "@/features/leaves/service";
 import { formatMinutes } from "@/features/attendance/calc";
-import type { ConceptNature } from "@/features/salaries/constants";
+import { CONCEPT_NATURE_LABELS, type ConceptNature } from "@/features/salaries/constants";
+import { EXPORT_MAX_ROWS, type ReportResult } from "@/features/reports/table";
 import {
   formatDate,
   formatMoney,
@@ -126,6 +127,62 @@ export async function listNovelties(ctx: ActorContext, rawQuery: unknown) {
     /** Se generan novedades hasta el mes en curso. */
     canGenerate: period <= current,
     query,
+  };
+}
+
+/**
+ * Novedades de un período con los filtros de la pantalla, para informarlas al
+ * sistema de liquidación. Mismo enmascarado que el listado.
+ */
+export async function exportNovelties(ctx: ActorContext, rawQuery: unknown): Promise<ReportResult> {
+  await assertPermission(ctx, "novelty:read", MODULE);
+  const parsed = noveltyListQuerySchema.parse(rawQuery);
+  const period = parsed.periodo ? parsePeriod(parsed.periodo)! : periodOf(todayInTimeZone());
+  const query = { ...parsed, periodo: periodKey(period) };
+  const rows = (await repo.listNoveltiesForExport(query, EXPORT_MAX_ROWS)).map((row) => toItem(ctx, row));
+  return {
+    title: "Novedades",
+    filters: [
+      `Período ${formatPeriod(period)}`,
+      ...(query.estado ? [`Estado: ${query.estado}`] : []),
+      ...(query.q ? [`Búsqueda: ${query.q}`] : []),
+      ...(rows.length === EXPORT_MAX_ROWS ? [`Se exportaron las primeras ${EXPORT_MAX_ROWS} filas.`] : []),
+    ],
+    tables: [
+      {
+        id: "novedades",
+        title: "Novedades",
+        columns: [
+          { key: "periodo", label: "Período" },
+          { key: "fecha", label: "Fecha", type: "date" },
+          { key: "legajo", label: "Legajo", type: "int" },
+          { key: "empleado", label: "Empleado" },
+          { key: "tipo", label: "Tipo" },
+          { key: "naturaleza", label: "Naturaleza" },
+          { key: "cantidad", label: "Cantidad", type: "decimal" },
+          { key: "unidad", label: "Unidad" },
+          { key: "importe", label: "Importe", type: "money" },
+          { key: "estado", label: "Estado" },
+          { key: "origen", label: "Origen" },
+          { key: "observaciones", label: "Observaciones" },
+        ],
+        rows: rows.map((n) => ({
+          periodo: periodKey(n.period),
+          fecha: n.date,
+          legajo: n.employee.fileNumber,
+          empleado: fullName(n.employee),
+          tipo: n.type.name,
+          naturaleza: CONCEPT_NATURE_LABELS[n.type.nature],
+          cantidad: n.quantity,
+          unidad: n.quantityUnit,
+          importe: n.amount === null ? null : Number(n.amount),
+          estado: NOVELTY_STATUS_LABELS[n.status],
+          origen: n.source ?? "Carga manual",
+          observaciones: n.notes,
+        })),
+        empty: "No hay novedades con estos filtros.",
+      },
+    ],
   };
 }
 

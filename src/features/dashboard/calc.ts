@@ -1,67 +1,35 @@
-import { countDays, isoKey, isoWeekday } from "@/features/leaves/days";
+import { absenceBreakdown, type AbsenceInput } from "@/features/reports/calc";
 
 /*
  * Cálculos puros del inicio. Fechas de calendario en UTC.
  */
 
-export type AbsenceEmployee = {
-  id: string;
-  hireDate: Date;
-  exitDate: Date | null;
-  /** Días de la semana que trabaja (1 = lunes); sin horario, los días por defecto. */
-  workDays: ReadonlySet<number>;
-};
+export type { AbsenceEmployee } from "@/features/reports/calc";
 
-export type AbsenceInput = {
-  start: Date;
-  end: Date;
-  employees: AbsenceEmployee[];
-  holidays: ReadonlySet<string>;
-  /** Días con ausencia registrada en asistencia. */
-  absentDays: { employeeId: string; date: Date }[];
+type DashboardAbsenceInput = Omit<AbsenceInput, "attendanceType" | "leaves"> & {
   /** Licencias aprobadas de tipos que cuentan para ausentismo. */
   leaves: { employeeId: string; startDate: Date; endDate: Date }[];
 };
 
-const max = (a: Date, b: Date) => (a > b ? a : b);
-const min = (a: Date, b: Date) => (a < b ? a : b);
-
 /**
  * Ausentismo del período: días de trabajo perdidos sobre días de trabajo
- * previstos. Solo cuentan los días hábiles de cada persona (su horario,
- * sin feriados) dentro de su período de empleo. Un día no se cuenta dos veces.
+ * previstos, con el mismo cálculo que el reporte de ausentismo.
  */
-export function absenteeism(input: AbsenceInput) {
-  let expected = 0;
-  const lost = new Set<string>();
-  const byId = new Map(input.employees.map((e) => [e.id, e]));
-  const windowOf = (e: AbsenceEmployee) => ({
-    from: max(input.start, e.hireDate),
-    to: e.exitDate ? min(input.end, e.exitDate) : input.end,
+export function absenteeism(input: DashboardAbsenceInput) {
+  const byEmployee = absenceBreakdown({
+    ...input,
+    leaves: input.leaves.map((l) => ({ ...l, type: "" })),
+    attendanceType: "",
   });
-  const isWorkDay = (e: AbsenceEmployee, date: Date) => {
-    const { from, to } = windowOf(e);
-    return date >= from && date <= to && e.workDays.has(isoWeekday(date)) && !input.holidays.has(isoKey(date));
-  };
-
-  for (const e of input.employees) {
-    const { from, to } = windowOf(e);
-    expected += countDays(from, to, "HABILES", e.workDays, input.holidays);
+  let expected = 0;
+  let lost = 0;
+  let people = 0;
+  for (const e of byEmployee.values()) {
+    expected += e.expected;
+    lost += e.lost;
+    if (e.lost > 0) people++;
   }
-  for (const a of input.absentDays) {
-    const e = byId.get(a.employeeId);
-    if (e && isWorkDay(e, a.date)) lost.add(`${e.id}:${isoKey(a.date)}`);
-  }
-  for (const l of input.leaves) {
-    const e = byId.get(l.employeeId);
-    if (!e) continue;
-    for (let t = max(l.startDate, input.start).getTime(); t <= min(l.endDate, input.end).getTime(); t += 86_400_000) {
-      const date = new Date(t);
-      if (isWorkDay(e, date)) lost.add(`${e.id}:${isoKey(date)}`);
-    }
-  }
-  const people = new Set([...lost].map((k) => k.split(":")[0]));
-  return { expected, lost: lost.size, people: people.size, rate: expected > 0 ? lost.size / expected : null };
+  return { expected, lost, people, rate: expected > 0 ? lost / expected : null };
 }
 
 /** Años con un decimal entre dos fechas (antigüedad promedio). */

@@ -2,7 +2,7 @@
 
 Aplicación web de gestión de personal para una PyME argentina: legajos, documentación, licencias, vacaciones, asistencia, remuneraciones informadas, novedades, egresos, reportes y auditoría.
 
-> **Estado:** en desarrollo por fases. Fase actual: **11 — inicio con indicadores y alertas**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
+> **Estado:** en desarrollo por fases. Fase actual: **12 — reportes y exportación**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
 
 - Diseño técnico aprobado: [docs/arquitectura.md](docs/arquitectura.md)
 - El sistema **no** liquida sueldos ni emite comprobantes fiscales: registra la información que informa el sistema de liquidación de la empresa.
@@ -184,7 +184,7 @@ Los datos salariales del seed son ficticios.
 - **Estados**: pendiente → aprobada → informada (después de cargarla en el sistema de liquidación; se puede desmarcar). Se anulan con un motivo; nada se borra. Solo las manuales se editan, y editar una aprobada la devuelve a pendiente. Los botones de aprobar y marcar informadas en bloque actúan sobre el mes y los filtros a la vista.
 - **Permisos**: "Ver novedades", "Registrar novedades" (cargar, editar, aprobar, anular y generar) y "Marcar novedades como informadas". Sin "Ver información salarial", las novedades de cambios salariales se muestran sin importe.
 
-La exportación de novedades a CSV llega con los reportes de la Fase 12.
+Las novedades del período, con los filtros de la pantalla, se exportan a Excel o CSV desde los botones de arriba (permiso "Exportar listados y reportes"), para cargarlas en el sistema de liquidación.
 
 ## Egresos e historial
 
@@ -198,7 +198,7 @@ En **Egresos** (menú) se registran y siguen las bajas de todo el personal; la p
 - **Línea de tiempo**: une ingreso, cambios laborales, básicos, licencias aprobadas, egresos y reingresos, del más reciente al más antiguo y con filtro por tipo. Cada parte se muestra solo con el permiso de su módulo; las licencias marcadas como dato de salud aparecen como "Licencia (dato reservado)".
 - **Permisos**: "Ver egresos" para consultar y "Registrar egresos y reingresos" para cargar, confirmar, anular y reingresar.
 
-Los egresos del seed son ficticios: uno confirmado y uno en trámite. Los egresos del mes se ven en el inicio; el reporte de altas y bajas llega con los reportes (Fase 12).
+Los egresos del seed son ficticios: uno confirmado y uno en trámite. Los egresos del mes se ven en el inicio y en el reporte de altas y bajas.
 
 ## Inicio
 
@@ -227,6 +227,24 @@ El **Inicio** muestra indicadores calculados en el momento con los datos cargado
 - **Anticipación**: en Configuración → Parámetros → Alertas (días para licencias, vacaciones, cumpleaños y contratos; 0 desactiva el aviso).
 - **Posponer 7 días** o **Descartar**: vale para todos los usuarios y queda en la auditoría. Se puede volver a pendientes desde los filtros "Pospuestas" y "Descartadas". Si cambia el dato que originó el aviso (por ejemplo, una nueva fecha de vencimiento), es una alerta nueva y vuelve a aparecer. Hace falta el permiso de escritura del módulo de origen.
 - Los datos de salud se muestran como reservados sin el permiso "Ver documentación sensible".
+
+## Reportes y exportación
+
+**Reportes** (menú) reúne siete reportes calculados en el momento con los datos cargados. Cada uno tiene filtros que quedan en la URL (sector, puesto, establecimiento y, según el reporte, fechas, mes o período) y muestra arriba qué se está mirando. Los filtros de estructura usan la asignación actual de cada persona.
+
+| Reporte                   | Qué muestra                                                                                                                                                        | Permiso                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| Dotación                  | Personal activo por sector, puesto, categoría y establecimiento, y el detalle.                                                                                     | Reporte de dotación                                  |
+| Altas y bajas             | Evolución mensual (altas, bajas y dotación al cierre), ingresos y reingresos, y egresos confirmados de un rango de meses (por defecto, los últimos doce).          | Reporte de altas y bajas                             |
+| Ausentismo                | Días de ausencia sobre días previstos por empleado, por sector y por tipo, entre dos fechas (por defecto, el mes en curso hasta hoy). Mismo cálculo que el inicio. | Reporte de ausentismo                                |
+| Vacaciones                | Por empleado y por sector: corresponden, ajuste, arrastre, disponibles, utilizados, solicitados y pendientes de un período.                                        | Reporte de vacaciones                                |
+| Vencimientos              | Documentos (marcando los renovados), licencias que terminan y contratos a plazo entre dos fechas (por defecto, los próximos 60 días).                              | Reporte de vencimientos                              |
+| Antigüedad                | Personal activo por rangos y el detalle, a una fecha. Los rangos se ajustan en Configuración → Parámetros → Rangos de antigüedad.                                  | Reporte de antigüedad                                |
+| Remuneraciones informadas | Bruto, descuentos y neto informados de un mes, por sector y por empleado, con el aviso "no constituye liquidación de haberes".                                     | Reporte de remuneraciones y Ver información salarial |
+
+- **Exportar**: con el permiso "Exportar listados y reportes", cada reporte se descarga en **Excel** (una hoja por tabla, con fechas y números reales) y cada tabla en **CSV**. También se exportan los listados de **Empleados** y **Novedades** con los filtros de la pantalla. DNI y CUIL salen solo con permiso de datos personales, y los datos de salud siguen reservados.
+- **CSV**: separador punto y coma, coma decimal, fechas dd/mm/aaaa y codificación UTF-8 con BOM, para que Excel en español lo abra directo. Los textos que empiezan con `=`, `+`, `-` o `@` se exportan con un apóstrofo adelante para que no se tomen como fórmulas.
+- Cada exportación queda en la auditoría con el reporte, el formato, los filtros y la cantidad de filas. Los listados exportan hasta 10.000 filas.
 
 ## Seguridad
 

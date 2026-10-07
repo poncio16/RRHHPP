@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { STATUS_LABELS } from "@/features/employees/constants";
 import { getEmployeeListFilters, listEmployees } from "@/features/employees/service";
+import { ExportButtons } from "@/features/reports/components/export-buttons";
 import { formatDate } from "@/lib/format";
 import { flattenSearchParams } from "@/lib/list/query";
 import { hasPermission } from "@/server/authz";
@@ -48,11 +49,14 @@ async function EmployeesContent({ searchParams }: Pick<Props, "searchParams">) {
         title="Empleados"
         description="Legajos del personal: datos personales, laborales e historial."
         actions={
-          canCreate && (
-            <Link href="/empleados/nuevo" className={buttonVariants()}>
-              <Plus /> Nuevo empleado
-            </Link>
-          )
+          <>
+            {hasPermission(ctx, "export:run") && <ExportButtons resource="empleados" params={params} />}
+            {canCreate && (
+              <Link href="/empleados/nuevo" className={buttonVariants()}>
+                <Plus /> Nuevo empleado
+              </Link>
+            )}
+          </>
         }
       />
       <Card>

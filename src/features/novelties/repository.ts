@@ -263,3 +263,13 @@ export async function typeNames(ids: string[], client: Client = db) {
   const rows = await client.noveltyType.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
   return new Map(rows.map((r) => [r.id, r.name]));
 }
+
+/** Todas las novedades del filtro, para exportar. */
+export async function listNoveltiesForExport(query: NoveltyListQuery, limit: number) {
+  return db.novelty.findMany({
+    where: await noveltyWhere(query),
+    orderBy: [{ employee: { lastName: "asc" } }, { employee: { firstName: "asc" } }, { date: "asc" }],
+    take: limit,
+    include: noveltyInclude,
+  });
+}

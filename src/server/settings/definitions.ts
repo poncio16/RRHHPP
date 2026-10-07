@@ -199,6 +199,38 @@ export const SETTING_DEFINITIONS = {
       contractEndingDays: z.number().int().min(0).max(180).default(30),
     }),
   },
+  seniority: {
+    title: "Rangos de antigüedad",
+    description:
+      "Límites de los rangos del reporte de antigüedad, en años cumplidos. Por ejemplo, 1, 5 y 10 arman los rangos: menos de 1, de 1 a menos de 5, de 5 a menos de 10 y 10 o más.",
+    fields: [1, 2, 3, 4, 5].map((n) => ({
+      name: `limit${n}`,
+      label: `Límite ${n}`,
+      unit: "años",
+      hint: n === 1 ? "Entre 1 y 60, de menor a mayor." : "0 lo deja sin usar (y a los siguientes).",
+    })) satisfies SettingFieldMeta[],
+    schema: z
+      .object({
+        limit1: z.number().int().min(1).max(60).default(1),
+        limit2: z.number().int().min(0).max(60).default(5),
+        limit3: z.number().int().min(0).max(60).default(10),
+        limit4: z.number().int().min(0).max(60).default(20),
+        limit5: z.number().int().min(0).max(60).default(0),
+      })
+      .superRefine((value, ctx) => {
+        const limits = [value.limit1, value.limit2, value.limit3, value.limit4, value.limit5];
+        for (let i = 1; i < limits.length; i++) {
+          const current = limits[i]!;
+          const previous = limits[i - 1]!;
+          if (current === 0) continue;
+          if (previous === 0) {
+            ctx.addIssue({ code: "custom", path: [`limit${i + 1}`], message: "Completá antes el límite anterior." });
+          } else if (current <= previous) {
+            ctx.addIssue({ code: "custom", path: [`limit${i + 1}`], message: "Tiene que ser mayor que el anterior." });
+          }
+        }
+      }),
+  },
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFINITIONS;
