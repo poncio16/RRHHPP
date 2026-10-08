@@ -2,10 +2,15 @@ import { weeklyHours } from "../../src/features/schedules/calc";
 import type { PrismaClient } from "../../src/generated/prisma/client";
 
 /**
- * Empresa y catálogos de demostración. Los nombres de empresa, sectores,
- * convenio, obras sociales y ART son ficticios. Los bancos son reales porque
- * su código de entidad se usa para validar el CBU (verificarlos con el BCRA
- * antes de usar el sistema en producción).
+ * Catálogos de la organización, en dos grupos:
+ *
+ * - Datos base (`seedGeneralCatalogs`): bancos, tipos de contrato y tipos de
+ *   jornada, que sirven a cualquier empresa. Los bancos son reales porque su
+ *   código de entidad se usa para validar el CBU (verificarlos con el BCRA
+ *   antes de usar el sistema en producción).
+ * - Datos de demostración (`seedOrganization`): empresa, sectores, puestos,
+ *   convenio y categorías, obras sociales, ART, establecimientos y horarios.
+ *   Cada empresa los configura en Configuración; los nombres son ficticios.
  *
  * Solo crea lo que falta: nunca pisa datos editados desde la aplicación.
  * No se cargan feriados: dependen del calendario oficial de cada año.
@@ -88,7 +93,24 @@ const SCHEDULES = [
 
 const sorted = <T>(items: T[]) => items.map((item, sortOrder) => ({ ...item, sortOrder }));
 
-export async function seedOrganization(db: PrismaClient) {
+/** Datos base: catálogos generales que no dependen de la empresa. */
+export async function seedGeneralCatalogs(
+  db: PrismaClient,
+): Promise<{ banks: number; contractTypes: number; workdayTypes: number }> {
+  const { count: banks } = await db.bank.createMany({ data: sorted(BANKS), skipDuplicates: true });
+  const { count: contractTypes } = await db.contractType.createMany({
+    data: sorted(CONTRACT_TYPES),
+    skipDuplicates: true,
+  });
+  const { count: workdayTypes } = await db.workdayType.createMany({
+    data: sorted(WORKDAY_TYPES),
+    skipDuplicates: true,
+  });
+  return { banks, contractTypes, workdayTypes };
+}
+
+/** Datos de demostración: empresa ficticia y su estructura. Devuelve cuántas empresas creó (0 o 1). */
+export async function seedOrganization(db: PrismaClient): Promise<{ company: number }> {
   await db.department.createMany({ data: sorted(DEPARTMENTS), skipDuplicates: true });
   const departments = new Map((await db.department.findMany()).map((d) => [d.name, d.id]));
   await db.position.createMany({
@@ -111,9 +133,6 @@ export async function seedOrganization(db: PrismaClient) {
       .map((c) => ({ ...c, agreementId: agreement.id })),
   });
 
-  await db.bank.createMany({ data: sorted(BANKS), skipDuplicates: true });
-  await db.contractType.createMany({ data: sorted(CONTRACT_TYPES), skipDuplicates: true });
-  await db.workdayType.createMany({ data: sorted(WORKDAY_TYPES), skipDuplicates: true });
   await db.artProvider.createMany({ data: sorted(ART_PROVIDERS.map((name) => ({ name }))), skipDuplicates: true });
 
   const insurers = new Set((await db.healthInsurer.findMany()).map((h) => h.name));
@@ -149,19 +168,19 @@ export async function seedOrganization(db: PrismaClient) {
     });
   }
 
-  if ((await db.company.count()) === 0) {
-    await db.company.create({
-      data: {
-        legalName: "Distribuidora Demo S.A.",
-        tradeName: "Distribuidora Demo",
-        cuit: "30712345671",
-        addressLine: "Av. Demostración 1234",
-        city: "Ciudad Autónoma de Buenos Aires",
-        postalCode: "C1000",
-        provinceId: provinces.get("AR-C") ?? null,
-        defaultArtProviderId: (await db.artProvider.findFirst({ where: { name: ART_PROVIDERS[0] } }))?.id ?? null,
-        defaultWorkplaceId: (await db.workplace.findFirst({ where: { name: WORKPLACES[0]!.name } }))?.id ?? null,
-      },
-    });
-  }
+  if ((await db.company.count()) > 0) return { company: 0 };
+  await db.company.create({
+    data: {
+      legalName: "Distribuidora Demo S.A.",
+      tradeName: "Distribuidora Demo",
+      cuit: "30712345671",
+      addressLine: "Av. Demostración 1234",
+      city: "Ciudad Autónoma de Buenos Aires",
+      postalCode: "C1000",
+      provinceId: provinces.get("AR-C") ?? null,
+      defaultArtProviderId: (await db.artProvider.findFirst({ where: { name: ART_PROVIDERS[0] } }))?.id ?? null,
+      defaultWorkplaceId: (await db.workplace.findFirst({ where: { name: WORKPLACES[0]!.name } }))?.id ?? null,
+    },
+  });
+  return { company: 1 };
 }

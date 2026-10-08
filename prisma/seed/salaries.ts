@@ -1,10 +1,11 @@
 import type { ConceptNature, NoveltyOrigin, PrismaClient, SalaryConceptKind } from "../../src/generated/prisma/client";
 
 /**
- * Catálogos de remuneraciones y novedades, básicos y resúmenes ficticios.
- * Los importes son inventados para la demostración: no responden a ningún
- * convenio ni a aportes reales. Los tipos y conceptos se pueden editar en
- * Configuración → Catálogos.
+ * Datos base: catálogos de conceptos de remuneración y tipos de novedad, con
+ * el vínculo de algunos tipos de licencia a su novedad (se editan en
+ * Configuración → Catálogos). Datos de demostración: básicos, resúmenes
+ * informados y novedades ficticias. Los importes son inventados: no responden
+ * a ningún convenio ni a aportes reales.
  */
 
 const CONCEPTS: { name: string; nature: ConceptNature; kind: SalaryConceptKind }[] = [
@@ -63,13 +64,19 @@ const LEAVE_LINKS: Record<string, string> = {
 const DAY = 86_400_000;
 const money = (n: number) => (Math.round(n / 100) * 100).toFixed(2);
 
-export async function seedSalaries(
+/**
+ * Datos base: conceptos de remuneración, tipos de novedad y vínculo de los
+ * tipos de licencia con su novedad. Correr después de los tipos de licencia:
+ * el vínculo se asigna solo al crear el tipo de novedad, para no reponer uno
+ * que se haya quitado desde Configuración.
+ */
+export async function seedSalaryCatalog(
   db: PrismaClient,
-): Promise<{ salaries: number; payrolls: number; novelties: number }> {
+): Promise<{ conceptTypes: number; noveltyTypes: number; leaveLinks: number }> {
   const existingConcepts = new Set(
     (await db.salaryConceptType.findMany({ select: { name: true } })).map((c) => c.name),
   );
-  await db.salaryConceptType.createMany({
+  const { count: conceptTypes } = await db.salaryConceptType.createMany({
     data: CONCEPTS.filter((c) => !existingConcepts.has(c.name)).map((c, i) => ({ ...c, sortOrder: i })),
   });
 
@@ -80,7 +87,7 @@ export async function seedSalaries(
     ),
   );
   const newTypes = NOVELTY_TYPES.filter((t) => !existingTypes.has(t.name));
-  await db.noveltyType.createMany({
+  const { count: noveltyTypes } = await db.noveltyType.createMany({
     data: newTypes.map((t, i) => ({
       ...t,
       generatedFrom: t.generatedFrom && !usedOrigins.has(t.generatedFrom) ? t.generatedFrom : null,
@@ -88,16 +95,23 @@ export async function seedSalaries(
     })),
   });
   const created = new Set(newTypes.map((t) => t.name));
+  let leaveLinks = 0;
   for (const [leaveType, noveltyType] of Object.entries(LEAVE_LINKS)) {
     if (!created.has(noveltyType)) continue;
     const type = await db.noveltyType.findUnique({ where: { name: noveltyType } });
-    await db.leaveType.updateMany({
+    const { count } = await db.leaveType.updateMany({
       where: { name: leaveType, generatesNoveltyTypeId: null },
       data: { generatesNoveltyTypeId: type!.id },
     });
+    leaveLinks += count;
   }
+  return { conceptTypes, noveltyTypes, leaveLinks };
+}
 
-  // Los datos de demostración se cargan una sola vez.
+/** Datos de demostración: básicos, resúmenes informados y novedades. Se cargan una sola vez. */
+export async function seedDemoSalaries(
+  db: PrismaClient,
+): Promise<{ salaries: number; payrolls: number; novelties: number }> {
   if ((await db.salaryHistory.count()) > 0) return { salaries: 0, payrolls: 0, novelties: 0 };
   const admin = await db.user.findFirst({ orderBy: { createdAt: "asc" } });
   if (!admin) return { salaries: 0, payrolls: 0, novelties: 0 };

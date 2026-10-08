@@ -1,6 +1,9 @@
+import type { PrismaClient } from "../../src/generated/prisma/client";
+
 /**
- * Datos de referencia estables: jurisdicciones argentinas y listas simples.
- * Son editables desde Configuración (Fase 4); el seed solo los crea si faltan.
+ * Datos de referencia estables (datos base): jurisdicciones argentinas y
+ * listas simples. Son editables desde Configuración (Fase 4); el seed solo
+ * los crea si faltan.
  */
 
 /** Las 24 jurisdicciones, con el código ISO 3166-2:AR. */
@@ -81,3 +84,12 @@ export const LOOKUP_VALUES: Record<string, { code: string; label: string }[]> = 
     { code: "OTRO", label: "Otro" },
   ],
 };
+
+export async function seedReferenceData(db: PrismaClient): Promise<{ provinces: number; lookupValues: number }> {
+  const { count: provinces } = await db.province.createMany({ data: PROVINCES, skipDuplicates: true });
+  const lookups = Object.entries(LOOKUP_VALUES).flatMap(([group, values]) =>
+    values.map((v, i) => ({ group, code: v.code, label: v.label, sortOrder: i })),
+  );
+  const { count: lookupValues } = await db.lookupValue.createMany({ data: lookups, skipDuplicates: true });
+  return { provinces, lookupValues };
+}

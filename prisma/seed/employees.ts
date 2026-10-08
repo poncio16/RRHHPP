@@ -3,9 +3,10 @@ import { cuilCheckDigit } from "../../src/lib/validators/cuil";
 import type { PrismaClient } from "../../src/generated/prisma/client";
 
 /**
- * Empleados de demostración. Nombres, documentos, domicilios, teléfonos y
- * cuentas son inventados; DNI, CUIL y CBU se generan con dígitos
- * verificadores válidos para que pasen las validaciones del sistema.
+ * Empleados de demostración (requieren la organización de demostración).
+ * Nombres, documentos, domicilios, teléfonos y cuentas son inventados; DNI,
+ * CUIL y CBU se generan con dígitos verificadores válidos para que pasen las
+ * validaciones del sistema.
  *
  * Idempotente: si ya existe un legajo con ese número no se toca.
  */
