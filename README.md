@@ -2,7 +2,7 @@
 
 Aplicación web de gestión de personal para una PyME argentina: legajos, documentación, licencias, vacaciones, asistencia, remuneraciones informadas, novedades, egresos, reportes y auditoría.
 
-> **Estado:** en desarrollo por fases. Fase actual: **13 — importación de empleados**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
+> **Estado:** en desarrollo por fases. Fase actual: **14 — visor de auditoría**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
 
 - Diseño técnico aprobado: [docs/arquitectura.md](docs/arquitectura.md)
 - El sistema **no** liquida sueldos ni emite comprobantes fiscales: registra la información que informa el sistema de liquidación de la empresa.
@@ -256,6 +256,15 @@ El **Inicio** muestra indicadores calculados en el momento con los datos cargado
 4. **Confirmar o descartar**: se puede importar solo las filas válidas o descartar, corregir el archivo y volver a subirlo. Al confirmar se crean todos los legajos válidos en una sola transacción, o ninguno si algo cambió desde la validación (por ejemplo, alguien cargó a la misma persona); en ese caso hay que volver a subir el archivo.
 
 Cada alta queda en la auditoría como un alta más, marcada "(importación)", y la confirmación como `IMPORT` con el archivo y la cantidad de filas; descartar también queda registrado. Las importaciones recientes se listan con su estado; al cerrarse, el lote deja de guardar los datos completos de cada fila y conserva solo nombre, DNI, estado, observaciones y el legajo creado.
+
+## Auditoría
+
+**Auditoría** (menú, permiso "Ver auditoría"; por defecto solo Administrador) muestra la bitácora completa, del evento más reciente al más antiguo: altas, modificaciones, bajas lógicas, inicios y cierres de sesión (también los fallidos), cambios de usuarios y permisos, accesos denegados, exportaciones, importaciones y descargas de archivos.
+
+- **Filtros**: búsqueda en el detalle o el email, rango de fechas (días completos en la hora de Argentina), módulo, acción, resultado (correcto, fallido o denegado) y usuario. Quedan en la URL y se combinan. Desde el historial de un legajo, "Cambios del legajo en auditoría" abre los eventos de ese empleado.
+- **Detalle**: fecha y hora, usuario, módulo, registro afectado (con enlace a empleados, usuarios e importaciones), IP y navegador. En una modificación se ven los campos que cambiaron con su valor anterior y nuevo; en un alta, los datos registrados. Sectores, puestos, catálogos y empleados se muestran por su nombre actual.
+- **Exportar**: con "Exportar listados y reportes", los eventos filtrados se descargan en Excel o CSV (hasta 10.000, sin el detalle campo por campo). La exportación también queda en la auditoría.
+- Nada se puede modificar ni borrar: la tabla es de solo inserción. Las contraseñas y tokens nunca se registran y el CBU queda enmascarado. Quien ve la auditoría ve los valores de todos los módulos, incluidos datos personales y salariales, por eso el permiso es solo del Administrador.
 
 ## Seguridad
 

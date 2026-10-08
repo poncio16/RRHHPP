@@ -16,6 +16,8 @@ import { loadExitFormData } from "@/features/exits/page-data";
 import { listEmployeeExits } from "@/features/exits/service";
 import { formatDate, toIsoDate } from "@/lib/format";
 import { flattenSearchParams } from "@/lib/list/query";
+import { hasPermission } from "@/server/authz";
+import Link from "next/link";
 
 export const metadata: Metadata = { title: "Historial" };
 
@@ -92,7 +94,17 @@ async function Content({ params, searchParams }: Props) {
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b p-3">
           <h2 className="font-semibold">Línea de tiempo</h2>
-          <FilterSelect name="tipo" label="Qué mostrar" defaultValue="todos" options={filters} />
+          <div className="flex flex-wrap items-center gap-3">
+            {hasPermission(ctx, "audit:read") && (
+              <Link
+                href={`/auditoria?entidad=Employee&registro=${employee.id}`}
+                className="text-primary text-sm hover:underline"
+              >
+                Cambios del legajo en auditoría
+              </Link>
+            )}
+            <FilterSelect name="tipo" label="Qué mostrar" defaultValue="todos" options={filters} />
+          </div>
         </div>
         {timeline.events.length === 0 ? (
           <EmptyState title="Sin hechos para mostrar" description="Probá con otro filtro." />
