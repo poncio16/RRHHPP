@@ -1082,7 +1082,7 @@ model ImportJob {
   totalRows   Int          @map("total_rows")
   validRows   Int          @map("valid_rows")
   errorRows   Int          @map("error_rows")
-  /// Filas normalizadas con sus errores, para previsualizar antes de confirmar.
+  /// Filas normalizadas con sus errores y columnas ignoradas, para previsualizar antes de confirmar.
   rows        Json
   createdById String       @map("created_by_id") @db.Uuid
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
