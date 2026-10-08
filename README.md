@@ -2,7 +2,7 @@
 
 Aplicación web de gestión de personal para una PyME argentina: legajos, documentación, licencias, vacaciones, asistencia, remuneraciones informadas, novedades, egresos, reportes y auditoría.
 
-> **Estado:** en desarrollo por fases. Fase actual: **14 — visor de auditoría**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
+> **Estado:** en desarrollo por fases. Fase actual: **15 — pruebas, seguridad y optimización**. Los módulos se habilitan en el menú a medida que se entregan; los que todavía no existen aparecen deshabilitados con la fase en la que llegan.
 
 - Diseño técnico aprobado: [docs/arquitectura.md](docs/arquitectura.md)
 - El sistema **no** liquida sueldos ni emite comprobantes fiscales: registra la información que informa el sistema de liquidación de la empresa.
@@ -49,7 +49,7 @@ Si usás un PostgreSQL propio en lugar de Docker, creá dos bases (`rrhh` y `rrh
 | `STORAGE_DIR`                             | Carpeta de archivos adjuntos (persistente en producción).                                              |
 | `LOG_LEVEL`                               | `fatal`, `error`, `warn`, `info`, `debug` o `trace`.                                                   |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Administrador inicial que crea el seed si todavía no existe. Debe cambiar la contraseña al ingresar.   |
-| `TRUSTED_PROXY`                           | `true` solo detrás de un proxy inverso que envía la IP real (`X-Real-IP` / `X-Forwarded-For`).         |
+| `TRUSTED_PROXY`                           | `true` detrás de un proxy inverso que fija `X-Real-IP` o agrega la IP a `X-Forwarded-For`.             |
 
 La aplicación valida las variables al arrancar y se detiene con un mensaje claro si falta alguna.
 
@@ -65,10 +65,33 @@ La aplicación valida las variables al arrancar y se detiene con un mensaje clar
 | `npm test`                        | Todos los tests (unitarios + integración).              |
 | `npm run test:unit`               | Solo unitarios (no necesitan base de datos).            |
 | `npm run test:integration`        | Integración contra `TEST_DATABASE_URL`.                 |
+| `npm run test:e2e`                | Pruebas de punta a punta en el navegador (Playwright).  |
 | `npm run db:migrate`              | Crea y aplica una migración nueva en desarrollo.        |
 | `npm run db:deploy`               | Aplica migraciones pendientes (producción y CI).        |
 | `npm run db:seed`                 | Carga datos iniciales. Se puede repetir sin duplicar.   |
 | `npm run check`                   | Lint, tipos, formato y tests: lo mismo que verifica CI. |
+
+### Pruebas de punta a punta
+
+Recorren en Chromium los flujos principales sobre la app compilada: login (y rechazo de credenciales), alta de un empleado, DNI repetido, licencia, egreso confirmado, auditoría del alta, cabeceras de seguridad y que las pantallas principales no se desborden en un celular.
+
+```bash
+npx playwright install chromium   # una sola vez
+npm run build
+npm run test:e2e                   # levanta `next start` en el puerto 3100
+```
+
+Usan la base de `DATABASE_URL` (la de desarrollo, con el seed cargado) y crean empleados de prueba con DNI 4xxxxxxx. Variables opcionales:
+
+| Variable           | Uso                                                                                             |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| `E2E_EMAIL`        | Usuario con el que ingresan. Por defecto, `SEED_ADMIN_EMAIL`.                                   |
+| `E2E_PASSWORD`     | Su contraseña. Por defecto, `SEED_ADMIN_PASSWORD`.                                              |
+| `E2E_NEW_PASSWORD` | Si el usuario todavía tiene que cambiar la contraseña inicial, las pruebas la cambian por esta. |
+| `E2E_BASE_URL`     | Probar contra una app ya levantada en lugar de iniciar una.                                     |
+| `E2E_PORT`         | Puerto de la app que levantan las pruebas (3100 por defecto).                                   |
+
+Nunca las corras contra una base con datos reales: dan de alta y egresan empleados de prueba.
 
 ## Estructura
 
@@ -269,10 +292,12 @@ Cada alta queda en la auditoría como un alta más, marcada "(importación)", y 
 ## Seguridad
 
 - **Sesiones** en base de datos: la cookie (`httpOnly`, `SameSite=Lax`, `Secure` en producción) lleva un token aleatorio de 256 bits; en la base solo se guarda su hash SHA-256. Vencen por inactividad y por duración máxima.
-- **Contraseñas** con Argon2id. Mensaje de error genérico en el login y bloqueo temporal tras varios intentos fallidos.
+- **Contraseñas** con Argon2id. El login responde lo mismo para email inexistente, contraseña incorrecta, usuario inactivo o cuenta bloqueada. Tras varios intentos fallidos la cuenta se bloquea un tiempo; el intento se cuenta antes de verificar la contraseña, así varios pedidos simultáneos no prueban más claves que las permitidas.
 - Inactividad, duración máxima, intentos, minutos de bloqueo y largo mínimo de contraseña son parámetros (`Setting` `security`), no constantes del código.
-- **Permisos validados en el servidor** en cada página, server action y endpoint; el menú solo oculta lo que el rol no puede usar. Un acceso denegado queda auditado.
-- **Auditoría** de ingresos (exitosos y fallidos), cierres de sesión, cambios de contraseña, altas y cambios de usuarios y de permisos. La tabla `audit_log` es de solo inserción (trigger en la base); nunca guarda contraseñas ni tokens y enmascara el CBU.
+- **Permisos validados en el servidor** en cada página, server action y endpoint; el menú solo oculta lo que el rol no puede usar. Un acceso denegado queda auditado. Los datos personales, bancarios, salariales y de salud se ocultan también en avisos, totales y datos de formularios, no solo en las columnas.
+- **Cabeceras** en todas las respuestas: `Content-Security-Policy` (solo recursos propios, sin `eval` en producción, sin marcos), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Permissions-Policy` y, fuera de desarrollo, `Strict-Transport-Security`. La CSP admite scripts en línea porque las páginas estáticas no llevan nonce; el código no inserta HTML sin escapar.
+- **Archivos**: tipo reconocido por su contenido, tamaño máximo, nombres de almacenamiento aleatorios y descargas como adjunto. Un Excel a importar se controla descomprimido (hasta 10 MB) y solo se leen celdas con datos.
+- **Auditoría** de ingresos (exitosos y fallidos), cierres de sesión, cambios de contraseña, altas y cambios de usuarios y de permisos. La tabla `audit_log` es de solo inserción (trigger en la base); nunca guarda contraseñas ni tokens y enmascara el CBU. La IP es la que informa el proxy inverso; sin proxy, el cliente la puede falsear, por eso en producción la app va detrás de uno con `TRUSTED_PROXY=true`.
 - Secretos solo por `.env` (nunca versionado), validación de variables al iniciar, restricciones `CHECK` sobre fechas, importes y formatos, y logs que ocultan contraseñas, tokens y CBU.
-
-La revisión de seguridad completa (cabeceras, límites de tasa, dependencias) es la Fase 15.
+- **Límite de pedidos por IP**: la app limita los intentos por cuenta, no por IP. El límite por IP se configura en el proxy inverso (la Fase 16 documenta un ejemplo).
+- **Dependencias**: `npm audit --omit=dev` reporta avisos en `prisma` (solo la línea de comandos, con controladores que la app no usa) y en `uuid` dentro de `exceljs` (una función que ExcelJS no llama). Ninguno es alcanzable desde la app; las correcciones que ofrece npm son versiones anteriores incompatibles.
