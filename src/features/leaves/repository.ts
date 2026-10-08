@@ -176,7 +176,13 @@ export async function findOverlapping(
       ...(excludeId ? { NOT: { id: excludeId } } : {}),
     },
     orderBy: { startDate: "asc" },
-    select: { id: true, startDate: true, endDate: true, status: true, leaveType: { select: { name: true } } },
+    select: {
+      id: true,
+      startDate: true,
+      endDate: true,
+      status: true,
+      leaveType: { select: { name: true, isSensitive: true } },
+    },
   });
 }
 

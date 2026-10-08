@@ -27,6 +27,8 @@ const MODULE = "licencias";
 
 /** Los tipos sensibles (enfermedad, accidente) son datos de salud: mismo permiso que la documentación médica. */
 const canSeeHealth = (ctx: ActorContext) => hasPermission(ctx, "document.sensitive:read");
+const leaveName = (ctx: ActorContext, type: { name: string; isSensitive: boolean }) =>
+  type.isSensitive && !canSeeHealth(ctx) ? RESERVED_TYPE_LABEL : type.name;
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -87,6 +89,7 @@ function addError(errors: FieldErrors, field: string, message: string) {
  * corresponde. Los topes del tipo y el saldo solo generan avisos.
  */
 async function evaluate(
+  ctx: ActorContext,
   employee: repo.EmployeeForLeave,
   type: repo.LeaveTypeRecord,
   period: Period,
@@ -115,7 +118,7 @@ async function evaluate(
     addError(
       fieldErrors,
       "startDate",
-      `Se superpone con ${overlap.leaveType.name.toLowerCase()} del ${formatDate(overlap.startDate)} al ${formatDate(overlap.endDate)} (${LEAVE_STATUS_LABELS[overlap.status].toLowerCase()}).`,
+      `Se superpone con ${leaveName(ctx, overlap.leaveType).toLowerCase()} del ${formatDate(overlap.startDate)} al ${formatDate(overlap.endDate)} (${LEAVE_STATUS_LABELS[overlap.status].toLowerCase()}).`,
     );
   }
 
@@ -310,6 +313,7 @@ export async function previewLeave(ctx: ActorContext, input: unknown) {
   if (!employee || !type || (type.isSensitive && !canSeeHealth(ctx))) throw new NotFoundError();
   if (parseIsoDate(parsed.endDate)! < parseIsoDate(parsed.startDate)!) return null;
   const evaluation = await evaluate(
+    ctx,
     employee,
     type,
     { startDate: parsed.startDate, endDate: parsed.endDate, vacationBalanceId: parsed.vacationBalanceId ?? null },
@@ -377,7 +381,7 @@ export async function createLeave(ctx: ActorContext, employeeId: string | null, 
 
   return repo.transaction(async (tx) => {
     await repo.lockEmployee(employee.id, tx);
-    const evaluation = await evaluate(employee, type, data, null, tx);
+    const evaluation = await evaluate(ctx, employee, type, data, null, tx);
     throwIfInvalid(evaluation);
     if (approve) {
       assertBalanceForApproval(evaluation);
@@ -449,7 +453,7 @@ export async function updateLeave(ctx: ActorContext, id: string, input: unknown)
 
   const warnings = await repo.transaction(async (tx) => {
     await repo.lockEmployee(employee.id, tx);
-    const evaluation = await evaluate(employee, type, data, id, tx);
+    const evaluation = await evaluate(ctx, employee, type, data, id, tx);
     throwIfInvalid(evaluation);
     if (record.status === "APROBADA") {
       assertBalanceForApproval(evaluation);
@@ -510,6 +514,7 @@ export async function decideLeave(ctx: ActorContext, id: string, input: unknown)
     let days = record.days;
     if (decision === "APROBADA") {
       const evaluation = await evaluate(
+        ctx,
         employee,
         record.leaveType,
         {

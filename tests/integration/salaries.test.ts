@@ -491,9 +491,21 @@ describe("generación de novedades", () => {
   it("sin permiso de información salarial no se ve el importe del cambio de básico", async () => {
     const list = await novelties.listEmployeeNovelties(onlyNovelties, refs.employee, { origen: "generadas" });
     const salary = list.items.find((i) => i.type.id === origin.CAMBIO_SALARIAL);
-    expect(salary).toMatchObject({ amount: null, notes: "Dato salarial reservado." });
+    expect(salary).toMatchObject({ amount: null, notes: "Dato salarial reservado.", formValues: null });
     const full = await novelties.listEmployeeNovelties(rrhh, refs.employee, { origen: "generadas" });
     expect(full.items.find((i) => i.type.id === origin.CAMBIO_SALARIAL)?.amount).toBe("975000.00");
+
+    // Tampoco se deduce de los totales filtrando por el tipo, aunque se configure como haber.
+    const byType = { tipo: origin.CAMBIO_SALARIAL };
+    await db.noveltyType.update({ where: { id: origin.CAMBIO_SALARIAL }, data: { nature: "HABER" } });
+    try {
+      const hidden = await novelties.listEmployeeNovelties(onlyNovelties, refs.employee, byType);
+      expect(hidden.summary.haberes).toBe("0.00");
+      const shown = await novelties.listEmployeeNovelties(rrhh, refs.employee, byType);
+      expect(shown.summary.haberes).toBe("975000.00");
+    } finally {
+      await db.noveltyType.update({ where: { id: origin.CAMBIO_SALARIAL }, data: { nature: "INFORMATIVO" } });
+    }
   });
 
   it("las generadas no se modifican a mano", async () => {

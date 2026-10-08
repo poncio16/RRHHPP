@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import * as auth from "@/features/auth/service";
 import { createSession, validateSession } from "@/server/auth/sessions";
 import { db } from "@/server/db";
-import { BusinessRuleError, ValidationError } from "@/server/errors";
+import { ValidationError } from "@/server/errors";
 import { actorFor, createTestUser, lastAudit, META, uniqueEmail } from "./helpers";
 
 afterAll(async () => {
@@ -44,12 +44,36 @@ describe("inicio de sesión", () => {
     for (let i = 0; i < 5; i++) {
       await expect(auth.login({ email: user.email, password: "mal" }, META)).rejects.toBeInstanceOf(ValidationError);
     }
-    // Ni con la contraseña correcta entra mientras dure el bloqueo.
-    await expect(auth.login({ email: user.email, password: "ClaveSegura123" }, META)).rejects.toBeInstanceOf(
-      BusinessRuleError,
+    // Ni con la contraseña correcta entra mientras dure el bloqueo, y el mensaje
+    // es el mismo que para un email inexistente.
+    const locked = await auth.login({ email: user.email, password: "ClaveSegura123" }, META).catch((e: unknown) => e);
+    const unknownEmail = await auth.login({ email: uniqueEmail(), password: "otra" }, META).catch((e: unknown) => e);
+    expect(locked).toBeInstanceOf(ValidationError);
+    expect((locked as Error).message).toBe((unknownEmail as Error).message);
+
+    const failures = await db.auditLog.findMany({
+      where: { userId: user.id, action: "LOGIN_FAILED" },
+      orderBy: { occurredAt: "asc" },
+      select: { message: true },
+    });
+    expect(failures).toHaveLength(6);
+    expect(failures[4]?.message).toMatch(/cuenta bloqueada/);
+    expect(failures[5]?.message).toBe("Cuenta bloqueada temporalmente");
+  });
+
+  it("pedidos simultáneos no prueban más contraseñas que las permitidas", async () => {
+    const user = await createTestUser("RRHH");
+    const results = await Promise.allSettled(
+      Array.from({ length: 12 }, () => auth.login({ email: user.email, password: "mal" }, META)),
     );
-    const failures = await db.auditLog.count({ where: { userId: user.id, action: "LOGIN_FAILED" } });
-    expect(failures).toBe(6);
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+
+    const checked = await db.auditLog.count({
+      where: { userId: user.id, action: "LOGIN_FAILED", message: { startsWith: "Contraseña incorrecta" } },
+    });
+    expect(checked).toBeLessThanOrEqual(5);
+    const after = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(after.lockedUntil?.getTime()).toBeGreaterThan(Date.now());
   });
 
   it("libera el bloqueo cuando vence", async () => {

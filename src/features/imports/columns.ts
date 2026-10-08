@@ -175,6 +175,10 @@ export const IMPORT_COLUMNS: ImportColumn[] = [
 /** Tope de filas por archivo: una PyME no da de alta más de una vez. */
 export const IMPORT_MAX_ROWS = 500;
 export const IMPORT_MAX_BYTES = 2 * 1024 * 1024;
+/** Un .xlsx descomprimido no puede pasar de esto: la plantilla con 500 filas ocupa bastante menos. */
+export const IMPORT_MAX_UNZIPPED_BYTES = 10 * 1024 * 1024;
+/** Columnas que se leen por fila; la plantilla usa bastante menos. */
+export const IMPORT_MAX_COLUMNS = 100;
 
 /** Texto comparable: sin mayúsculas, acentos ni espacios repetidos. */
 export function normalizeKey(value: string): string {

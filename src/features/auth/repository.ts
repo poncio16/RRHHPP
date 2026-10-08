@@ -16,6 +16,19 @@ export function updateUser(id: string, data: Prisma.UserUncheckedUpdateInput, cl
   return client.user.update({ where: { id }, data });
 }
 
+/**
+ * Suma un intento de ingreso en una sola sentencia y devuelve el total, para
+ * que varios pedidos simultáneos no lean el mismo contador y se pisen.
+ */
+export async function addLoginAttempt(id: string): Promise<number> {
+  const { failedLoginCount } = await db.user.update({
+    where: { id },
+    data: { failedLoginCount: { increment: 1 } },
+    select: { failedLoginCount: true },
+  });
+  return failedLoginCount;
+}
+
 export function transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) {
   return db.$transaction(fn);
 }

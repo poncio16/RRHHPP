@@ -35,7 +35,7 @@ export async function exportResource(
 ): Promise<ExportFile> {
   const { formato, tabla, ...query } = params;
   const format: ExportFormat = formato === "xlsx" ? "xlsx" : "csv";
-  const list = resource in LISTS ? LISTS[resource as keyof typeof LISTS] : null;
+  const list = Object.hasOwn(LISTS, resource) ? LISTS[resource as keyof typeof LISTS] : null;
   if (!list && !isReportSlug(resource)) throw new NotFoundError("No existe ese reporte.");
   const auditModule = list?.module ?? "reportes";
   await assertPermission(ctx, "export:run", auditModule);
