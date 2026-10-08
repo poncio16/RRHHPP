@@ -78,7 +78,10 @@ describe("inicio de sesión", () => {
 
   it("libera el bloqueo cuando vence", async () => {
     const user = await createTestUser("RRHH");
-    await db.user.update({ where: { id: user.id }, data: { lockedUntil: new Date(Date.now() - 1000) } });
+    await db.user.update({
+      where: { id: user.id },
+      data: { lockedUntil: new Date(Date.now() - 1000), failedLoginCount: 5 },
+    });
     await expect(auth.login({ email: user.email, password: "ClaveSegura123" }, META)).resolves.toBeDefined();
   });
 

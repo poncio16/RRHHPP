@@ -50,13 +50,13 @@ export async function login(input: unknown, meta: RequestMeta, now = new Date())
     await spendDummyCheck();
     return reject(user.id, "Cuenta bloqueada temporalmente");
   }
+  if (user.lockedUntil) await repo.clearExpiredLock(user.id, user.lockedUntil);
 
+  // El contador queda en el tope mientras dura el bloqueo: los pedidos que
+  // leyeron la cuenta antes de bloquearse tampoco llegan a verificar.
   const lockMessage = `cuenta bloqueada por ${security.lockMinutes} min`;
   const lockAccount = () =>
-    repo.updateUser(user.id, {
-      failedLoginCount: 0,
-      lockedUntil: new Date(now.getTime() + security.lockMinutes * 60_000),
-    });
+    repo.updateUser(user.id, { lockedUntil: new Date(now.getTime() + security.lockMinutes * 60_000) });
 
   const attempts = await repo.addLoginAttempt(user.id);
   if (attempts > security.maxFailedLogins) {
