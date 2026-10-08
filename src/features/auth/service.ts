@@ -3,67 +3,73 @@ import { recordAudit } from "@/server/audit";
 import { hashPassword, verifyPassword, getDummyHash } from "@/server/auth/password";
 import { createSession, revokeSession, revokeUserSessions } from "@/server/auth/sessions";
 import type { ActorContext, RequestMeta } from "@/server/context";
-import { BusinessRuleError, NotFoundError, ValidationError } from "@/server/errors";
+import { NotFoundError, ValidationError } from "@/server/errors";
 import { getSetting } from "@/server/settings";
 import * as repo from "./repository";
 import { changePasswordSchema, loginSchema } from "./schemas";
 
 const MODULE = "autenticacion";
-const INVALID_CREDENTIALS = "Email o contraseña incorrectos.";
+const INVALID_CREDENTIALS =
+  "Email o contraseña incorrectos. Después de varios intentos fallidos la cuenta se bloquea por un tiempo.";
 
 export type LoginResult = { token: string; expiresAt: Date; mustChangePassword: boolean };
 
 /**
  * Inicio de sesión con bloqueo temporal por intentos fallidos. El mensaje de
- * error es el mismo para email inexistente, contraseña incorrecta o usuario
- * inactivo, para no revelar qué cuentas existen.
+ * error es el mismo para email inexistente, contraseña incorrecta, usuario
+ * inactivo o cuenta bloqueada, para no revelar qué cuentas existen. El intento
+ * se cuenta antes de verificar la contraseña: pedidos simultáneos no pueden
+ * probar más claves que las permitidas.
  */
 export async function login(input: unknown, meta: RequestMeta, now = new Date()): Promise<LoginResult> {
   const { email, password } = loginSchema.parse(input);
   const security = await getSetting("security");
   const user = await repo.findUserByEmail(email);
 
-  const fail = async (userId: string | null, message: string) => {
+  const reject = async (userId: string | null, message: string): Promise<never> => {
     await recordAudit(
       { ...meta, userId, email },
       { action: "LOGIN_FAILED", module: MODULE, result: "FAILURE", message },
     );
+    throw new ValidationError(INVALID_CREDENTIALS);
+  };
+  // Mismo costo que una verificación real, para no distinguir los casos por el tiempo.
+  const spendDummyCheck = async () => {
+    await verifyPassword(await getDummyHash(), password);
   };
 
   if (!user) {
-    await verifyPassword(await getDummyHash(), password);
-    await fail(null, "Email inexistente");
-    throw new ValidationError(INVALID_CREDENTIALS);
+    await spendDummyCheck();
+    return reject(null, "Email inexistente");
   }
-
-  if (user.lockedUntil && user.lockedUntil > now) {
-    await fail(user.id, "Cuenta bloqueada temporalmente");
-    throw new BusinessRuleError(
-      "La cuenta está bloqueada temporalmente por varios intentos fallidos. Probá de nuevo más tarde o pedí al administrador que la desbloquee.",
-    );
-  }
-
-  const valid = await verifyPassword(user.passwordHash, password);
-
   if (!user.isActive) {
-    await fail(user.id, "Usuario inactivo");
-    throw new ValidationError(INVALID_CREDENTIALS);
+    await spendDummyCheck();
+    return reject(user.id, "Usuario inactivo");
+  }
+  if (user.lockedUntil && user.lockedUntil > now) {
+    await spendDummyCheck();
+    return reject(user.id, "Cuenta bloqueada temporalmente");
+  }
+  if (user.lockedUntil) await repo.clearExpiredLock(user.id, user.lockedUntil);
+
+  // El contador queda en el tope mientras dura el bloqueo: los pedidos que
+  // leyeron la cuenta antes de bloquearse tampoco llegan a verificar.
+  const lockMessage = `cuenta bloqueada por ${security.lockMinutes} min`;
+  const lockAccount = () =>
+    repo.updateUser(user.id, { lockedUntil: new Date(now.getTime() + security.lockMinutes * 60_000) });
+
+  const attempts = await repo.addLoginAttempt(user.id);
+  if (attempts > security.maxFailedLogins) {
+    // Pedidos simultáneos que pasaron el límite: ni se verifica la contraseña.
+    await spendDummyCheck();
+    await lockAccount();
+    return reject(user.id, `Intentos simultáneos por encima del límite; ${lockMessage}`);
   }
 
-  if (!valid) {
-    const attempts = user.failedLoginCount + 1;
+  if (!(await verifyPassword(user.passwordHash, password))) {
     const lock = attempts >= security.maxFailedLogins;
-    await repo.updateUser(
-      user.id,
-      lock
-        ? { failedLoginCount: 0, lockedUntil: new Date(now.getTime() + security.lockMinutes * 60_000) }
-        : { failedLoginCount: attempts },
-    );
-    await fail(
-      user.id,
-      lock ? `Contraseña incorrecta; cuenta bloqueada por ${security.lockMinutes} min` : "Contraseña incorrecta",
-    );
-    throw new ValidationError(INVALID_CREDENTIALS);
+    if (lock) await lockAccount();
+    return reject(user.id, lock ? `Contraseña incorrecta; ${lockMessage}` : "Contraseña incorrecta");
   }
 
   await repo.updateUser(user.id, { failedLoginCount: 0, lockedUntil: null, lastLoginAt: now });

@@ -95,7 +95,7 @@ export function NoveltyActions({
           }}
         />
       )}
-      {canWrite && item.editable && (
+      {canWrite && item.formValues && (
         <NoveltyDialog
           employeeId={item.employee.id}
           types={types}

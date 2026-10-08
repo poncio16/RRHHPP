@@ -255,6 +255,21 @@ describe("licencias", () => {
     );
     expect(reserved.items[0]?.leave).toBe(RESERVED_TYPE_LABEL);
 
+    // Tampoco aparece en el aviso a quien carga asistencia sin ese permiso.
+    const role = await db.role.upsert({
+      where: { code: "ASISTENCIA_SIN_SALUD" },
+      update: {},
+      create: {
+        code: "ASISTENCIA_SIN_SALUD",
+        name: "Asistencia sin datos de salud (test)",
+        permissions: { create: [{ permission: "attendance:read" }, { permission: "attendance:write" }] },
+      },
+    });
+    const loader = await actorFor((await createTestUser(role.code)).id);
+    const preview = await attendance.previewDay(loader, refs.other, day("2025-03-13", "09:00", "18:00"));
+    expect(preview?.problems.join(" ")).toContain(RESERVED_TYPE_LABEL.toLowerCase());
+    expect(preview?.problems.join(" ")).not.toContain(`Enfermedad ${tag}`.toLowerCase());
+
     await leaves.annulLeave(rrhh, request.id, { version: await read(), reason: "Cargada por error" });
     expect(await stored(refs.other, "2025-03-13")).toMatchObject({ status: "AUSENTE", leaveRecordId: null });
   });

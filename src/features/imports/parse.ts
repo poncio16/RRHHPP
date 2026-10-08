@@ -1,13 +1,22 @@
 import "server-only";
 import ExcelJS from "exceljs";
 import { ValidationError } from "@/server/errors/app-error";
+import { IMPORT_MAX_COLUMNS, IMPORT_MAX_UNZIPPED_BYTES } from "./columns";
+import { checkZipSize } from "./zip";
 
 /*
  * Lectura del archivo subido (Excel .xlsx o CSV) a una grilla de textos.
  * Las fechas de Excel se pasan a dd/mm/aaaa.
  */
 
-export type Sheet = { headers: string[]; rows: { rowNumber: number; cells: string[] }[] };
+type Line = { rowNumber: number; cells: string[] };
+export type Sheet = { headers: string[]; rows: Line[] };
+
+const UNREADABLE = "No se pudo leer el archivo. Guardalo como Excel (.xlsx) o CSV y volvé a subirlo.";
+const tooWide = () =>
+  new ValidationError(
+    `El archivo tiene datos en más de ${IMPORT_MAX_COLUMNS} columnas. Usá la plantilla o borrá las columnas que sobran.`,
+  );
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const dateText = (d: Date) => `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
@@ -23,25 +32,38 @@ function cellText(value: ExcelJS.CellValue): string {
   return "";
 }
 
-async function readXlsx(bytes: Uint8Array): Promise<string[][]> {
+async function readXlsx(bytes: Uint8Array): Promise<Line[]> {
+  const zip = checkZipSize(bytes, IMPORT_MAX_UNZIPPED_BYTES);
+  if (zip === "too-large") {
+    throw new ValidationError(
+      "El Excel es demasiado grande para importarlo. Pegá solo la lista de empleados en la plantilla y subila.",
+    );
+  }
+  if (zip === "invalid") throw new ValidationError(UNREADABLE);
+
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(bytes as never);
   } catch {
-    throw new ValidationError("No se pudo leer el archivo. Guardalo como Excel (.xlsx) o CSV y volvé a subirlo.");
+    throw new ValidationError(UNREADABLE);
   }
   // La primera hoja con datos (la plantilla trae también una hoja de instrucciones).
   const sheet = workbook.worksheets.find((s) => s.name.toLowerCase() === "empleados") ?? workbook.worksheets[0];
   if (!sheet) return [];
-  const grid: string[][] = [];
-  sheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+  // Solo filas y celdas con contenido: recorrer las vacías puede crear millones de objetos.
+  const lines: Line[] = [];
+  let wide = false;
+  sheet.eachRow((row, rowNumber) => {
     const cells: string[] = [];
-    row.eachCell({ includeEmpty: true }, (cell, col) => {
-      cells[col - 1] = cellText(cell.value).trim();
+    row.eachCell((cell, col) => {
+      const text = cellText(cell.value).trim();
+      if (col <= IMPORT_MAX_COLUMNS) cells[col - 1] = text;
+      else if (text !== "") wide = true;
     });
-    grid[rowNumber - 1] = Array.from(cells, (c) => c ?? "");
+    lines.push({ rowNumber, cells: Array.from(cells, (c) => c ?? "") });
   });
-  return Array.from(grid, (r) => r ?? []);
+  if (wide) throw tooWide();
+  return lines;
 }
 
 function decode(bytes: Uint8Array): string {
@@ -91,17 +113,16 @@ export function parseCsv(text: string): string[][] {
 
 export async function readSpreadsheet(fileName: string, bytes: Uint8Array): Promise<Sheet> {
   const lower = fileName.toLowerCase();
-  let grid: string[][];
-  if (lower.endsWith(".xlsx")) grid = await readXlsx(bytes);
-  else if (lower.endsWith(".csv") || lower.endsWith(".txt")) grid = parseCsv(decode(bytes));
-  else throw new ValidationError("El archivo tiene que ser Excel (.xlsx) o CSV.");
+  let lines: Line[];
+  if (lower.endsWith(".xlsx")) lines = await readXlsx(bytes);
+  else if (lower.endsWith(".csv") || lower.endsWith(".txt")) {
+    lines = parseCsv(decode(bytes)).map((cells, i) => {
+      if (cells.slice(IMPORT_MAX_COLUMNS).some((c) => c !== "")) throw tooWide();
+      return { rowNumber: i + 1, cells: cells.slice(0, IMPORT_MAX_COLUMNS) };
+    });
+  } else throw new ValidationError("El archivo tiene que ser Excel (.xlsx) o CSV.");
 
-  const headerIndex = grid.findIndex((r) => r.some((c) => c !== ""));
-  if (headerIndex === -1) throw new ValidationError("El archivo está vacío.");
-  const headers = grid[headerIndex]!;
-  const rows = grid
-    .slice(headerIndex + 1)
-    .map((cells, i) => ({ rowNumber: headerIndex + i + 2, cells }))
-    .filter((r) => r.cells.some((c) => c !== ""));
-  return { headers, rows };
+  const [header, ...rows] = lines.filter((line) => line.cells.some((c) => c !== ""));
+  if (!header) throw new ValidationError("El archivo está vacío.");
+  return { headers: header.cells, rows };
 }

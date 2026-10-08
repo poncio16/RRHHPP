@@ -1,7 +1,10 @@
+import { deflateRawSync } from "node:zlib";
+import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
-import { IMPORT_COLUMNS, normalizeKey } from "@/features/imports/columns";
+import { IMPORT_COLUMNS, IMPORT_MAX_UNZIPPED_BYTES, normalizeKey } from "@/features/imports/columns";
 import { indexByName, mapRow, markDuplicates, matchHeaders, toIsoDate, type Lookups } from "@/features/imports/map";
 import { parseCsv, readSpreadsheet } from "@/features/imports/parse";
+import { checkZipSize } from "@/features/imports/zip";
 
 const ID = {
   province: "0190a000-0000-7000-8000-000000000001",
@@ -235,5 +238,64 @@ describe("importación: lectura de CSV", () => {
   it("rechaza otros formatos y archivos vacíos", async () => {
     await expect(readSpreadsheet("lista.pdf", new Uint8Array())).rejects.toThrow("Excel (.xlsx) o CSV");
     await expect(readSpreadsheet("lista.csv", new TextEncoder().encode("\n;\n"))).rejects.toThrow("vacío");
+  });
+});
+
+/** Zip mínimo de una sola parte comprimida que declara tamaño 0, como haría un archivo armado para engañar. */
+function zipWith(name: string, content: Buffer): Uint8Array {
+  const data = deflateRawSync(content);
+  const fileName = Buffer.from(name);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(data.length, 18);
+  local.writeUInt16LE(fileName.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(data.length, 20);
+  central.writeUInt16LE(fileName.length, 28);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length + fileName.length, 12);
+  end.writeUInt32LE(local.length + fileName.length + data.length, 16);
+  return new Uint8Array(Buffer.concat([local, fileName, data, central, fileName, end]));
+}
+
+async function xlsx(fill: (sheet: ExcelJS.Worksheet) => void): Promise<Uint8Array> {
+  const workbook = new ExcelJS.Workbook();
+  fill(workbook.addWorksheet("Empleados"));
+  return new Uint8Array(await workbook.xlsx.writeBuffer());
+}
+
+describe("importación: lectura de Excel", () => {
+  it("controla el tamaño descomprimido sin creer lo que declara el archivo", async () => {
+    const bomb = zipWith("xl/worksheets/sheet1.xml", Buffer.alloc(IMPORT_MAX_UNZIPPED_BYTES + 1));
+    expect(bomb.length).toBeLessThan(50_000);
+    expect(checkZipSize(bomb, IMPORT_MAX_UNZIPPED_BYTES)).toBe("too-large");
+    await expect(readSpreadsheet("lista.xlsx", bomb)).rejects.toThrow("demasiado grande");
+
+    expect(checkZipSize(zipWith("a.xml", Buffer.from("<a/>")), IMPORT_MAX_UNZIPPED_BYTES)).toBe("ok");
+    expect(checkZipSize(new TextEncoder().encode("no es un zip"), IMPORT_MAX_UNZIPPED_BYTES)).toBe("invalid");
+    await expect(readSpreadsheet("lista.xlsx", new TextEncoder().encode("hola"))).rejects.toThrow("No se pudo leer");
+  });
+
+  it("lee solo las celdas con datos, aunque haya una muy lejos", async () => {
+    const tall = await xlsx((sheet) => {
+      sheet.getCell("A1").value = "Apellido";
+      sheet.getCell("B1").value = "Nombre";
+      sheet.getCell("A1048576").value = "Pérez";
+    });
+    const sheet = await readSpreadsheet("lista.xlsx", tall);
+    expect(sheet.headers).toEqual(["Apellido", "Nombre"]);
+    expect(sheet.rows).toEqual([{ rowNumber: 1048576, cells: ["Pérez"] }]);
+
+    const wide = await xlsx((sheet) => {
+      sheet.getCell("A1").value = "Apellido";
+      sheet.getCell(2, 16384).value = "x";
+    });
+    await expect(readSpreadsheet("lista.xlsx", wide)).rejects.toThrow("más de 100 columnas");
   });
 });

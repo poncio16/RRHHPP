@@ -11,12 +11,17 @@ import { validateSession } from "./sessions";
 
 export const SESSION_COOKIE = "rrhh_session";
 
+/**
+ * IP y navegador para la auditoría. Detrás del proxy inverso se toma la IP que
+ * él informa: `X-Real-IP` o la última entrada de `X-Forwarded-For`, que es la
+ * que agrega el proxy (las anteriores las puede inventar el cliente). Sin
+ * proxy, Next completa `X-Forwarded-For` con la IP de la conexión solo si el
+ * pedido no lo trae; por eso en producción la app va detrás de un proxy.
+ */
 export async function getRequestMeta(): Promise<RequestMeta> {
   const h = await headers();
-  const forwarded = h.get("x-forwarded-for");
-  const ip = env.TRUSTED_PROXY
-    ? (h.get("x-real-ip") ?? forwarded?.split(",")[0]?.trim() ?? null)
-    : (forwarded?.split(",").at(-1)?.trim() ?? null);
+  const forwarded = h.get("x-forwarded-for")?.split(",").at(-1)?.trim() || null;
+  const ip = env.TRUSTED_PROXY ? h.get("x-real-ip")?.trim() || forwarded : forwarded;
   return { ip, userAgent: h.get("user-agent") };
 }
 

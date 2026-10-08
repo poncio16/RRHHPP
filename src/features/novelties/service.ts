@@ -54,6 +54,8 @@ function toItem(ctx: ActorContext, row: repo.NoveltyRow) {
   // Un cambio de básico generado es un dato salarial: sin ese permiso no se muestra el importe.
   const hidden = source === "SALARY_HISTORY" && !hasPermission(ctx, "salary:read");
   const quantity = row.quantity === null ? null : Number(row.quantity.toString());
+  // Solo se editan las manuales; las demás no mandan sus valores al navegador.
+  const editable = !source && (row.status === "PENDIENTE" || row.status === "APROBADA");
   return {
     id: row.id,
     employee: row.employee,
@@ -69,15 +71,17 @@ function toItem(ctx: ActorContext, row: repo.NoveltyRow) {
     createdBy: row.createdBy.name,
     createdAt: row.createdAt,
     version: row.updatedAt.toISOString(),
-    editable: !source && (row.status === "PENDIENTE" || row.status === "APROBADA"),
-    formValues: {
-      noveltyTypeId: row.noveltyTypeId,
-      date: toIsoDate(row.date),
-      period: periodKey(row.period),
-      quantity: row.quantity === null ? "" : decimalInput(row.quantity).replace(/,00$/, ""),
-      amount: row.amount === null ? "" : decimalInput(row.amount),
-      notes: row.notes ?? "",
-    },
+    editable,
+    formValues: editable
+      ? {
+          noveltyTypeId: row.noveltyTypeId,
+          date: toIsoDate(row.date),
+          period: periodKey(row.period),
+          quantity: row.quantity === null ? "" : decimalInput(row.quantity).replace(/,00$/, ""),
+          amount: row.amount === null ? "" : decimalInput(row.amount),
+          notes: row.notes ?? "",
+        }
+      : null,
   };
 }
 
@@ -111,7 +115,7 @@ export async function listNovelties(ctx: ActorContext, rawQuery: unknown) {
   const current = periodOf(todayInTimeZone());
   const period = parsed.periodo ? parsePeriod(parsed.periodo)! : current;
   const query = { ...parsed, periodo: periodKey(period) };
-  const result = await repo.listNovelties(query);
+  const result = await repo.listNovelties(query, { includeSalary: hasPermission(ctx, "salary:read") });
   return {
     ...paginate(
       result.items.map((row) => toItem(ctx, row)),
@@ -190,7 +194,10 @@ export async function exportNovelties(ctx: ActorContext, rawQuery: unknown): Pro
 export async function listEmployeeNovelties(ctx: ActorContext, employeeId: string, rawQuery: unknown) {
   await assertPermission(ctx, "novelty:read", MODULE);
   const query = noveltyListQuerySchema.parse(rawQuery);
-  const result = await repo.listNovelties({ ...query, periodo: undefined }, employeeId);
+  const result = await repo.listNovelties(
+    { ...query, periodo: undefined },
+    { employeeId, includeSalary: hasPermission(ctx, "salary:read") },
+  );
   return {
     ...paginate(
       result.items.map((row) => toItem(ctx, row)),

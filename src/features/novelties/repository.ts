@@ -79,7 +79,14 @@ export async function noveltyWhere(query: FilterInput, employeeId?: string): Pro
   return { AND: and };
 }
 
-export async function listNovelties(query: NoveltyListQuery, employeeId?: string) {
+/**
+ * `includeSalary: false` deja afuera de los totales los cambios de básico
+ * generados, que son datos salariales.
+ */
+export async function listNovelties(
+  query: NoveltyListQuery,
+  { employeeId, includeSalary }: { employeeId?: string; includeSalary: boolean },
+) {
   const where = await noveltyWhere(query, employeeId);
   // Totales del filtro sin tener en cuenta el estado elegido (para los contadores de estado).
   const anyStatus = await noveltyWhere({ ...query, estado: "todas" }, employeeId);
@@ -97,7 +104,14 @@ export async function listNovelties(query: NoveltyListQuery, employeeId?: string
     db.novelty.groupBy({ by: ["status"], where: anyStatus, _count: { _all: true } }),
     db.novelty.groupBy({
       by: ["noveltyTypeId"],
-      where: { AND: [where, { status: { not: "ANULADA" } }, { amount: { not: null } }] },
+      where: {
+        AND: [
+          where,
+          { status: { not: "ANULADA" } },
+          { amount: { not: null } },
+          ...(includeSalary ? [] : [{ OR: [{ sourceType: null }, { sourceType: { not: "SALARY_HISTORY" } }] }]),
+        ],
+      },
       _sum: { amount: true },
     }),
   ]);

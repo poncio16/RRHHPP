@@ -956,6 +956,9 @@ model Document {
   @@index([employeeId])
   @@index([expiryDate])
   @@index([documentTypeId])
+  // Certificados de cada licencia y documentos de cada egreso, que se cuentan en sus listados.
+  @@index([leaveRecordId])
+  @@index([exitId])
   @@map("document")
 }
 

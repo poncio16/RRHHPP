@@ -112,6 +112,7 @@ function inEmployment(employee: repo.AttendanceEmployee, date: Date) {
  * una licencia aprobada: primero hay que modificar o anular la licencia.
  */
 function evaluateDay(
+  ctx: ActorContext,
   employee: repo.AttendanceEmployee,
   date: Date,
   fields: DayFields,
@@ -130,7 +131,7 @@ function evaluateDay(
   if (leave && hasTimes) {
     add(
       "checkIn",
-      `El día está cubierto por ${leave.leaveType.name.toLowerCase()} aprobada (${formatDate(leave.startDate)} al ${formatDate(leave.endDate)}). Para cargar la fichada, modificá o anulá ese registro.`,
+      `El día está cubierto por ${leaveName(ctx, leave.leaveType).toLowerCase()} aprobada (${formatDate(leave.startDate)} al ${formatDate(leave.endDate)}). Para cargar la fichada, modificá o anulá ese registro.`,
     );
     return null;
   }
@@ -467,7 +468,7 @@ export async function saveDay(ctx: ActorContext, employeeId: string | null, inpu
     }
     const context = await loadContext([employee.id], date, date, tx);
     const errors: FieldErrors = {};
-    const day = evaluateDay(employee, date, data, context, errors);
+    const day = evaluateDay(ctx, employee, date, data, context, errors);
     if (!day) throw new ValidationError(undefined, errors);
     await persist(ctx, employee, date, day, version, tx);
     return { status: ATTENDANCE_STATUS_LABELS[day.status] };
@@ -484,7 +485,7 @@ export async function previewDay(ctx: ActorContext, employeeId: string, input: u
   if (!employee) throw new NotFoundError("El legajo no existe.");
   const context = await loadContext([employee.id], date, date);
   const errors: FieldErrors = {};
-  const day = evaluateDay(employee, date, parsed.data, context, errors);
+  const day = evaluateDay(ctx, employee, date, parsed.data, context, errors);
   const plan = planLabel(planOf(employee, date, context));
   if (date > todayInTimeZone()) errors.date = ["No se puede cargar asistencia de días futuros."];
   return {
@@ -518,7 +519,7 @@ export async function saveSheet(ctx: ActorContext, input: unknown) {
         errors[`rows.${index}.checkIn`] = ["El legajo no existe."];
         return null;
       }
-      const day = evaluateDay(employee, date, row, context, errors, `rows.${index}.`);
+      const day = evaluateDay(ctx, employee, date, row, context, errors, `rows.${index}.`);
       return day ? { employee, day, version: row.version } : null;
     });
     if (Object.keys(errors).length > 0) {
