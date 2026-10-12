@@ -1,4 +1,6 @@
+import type { CatalogKey } from "@/features/catalogs/definitions";
 import type { AuditAction, AuditResult } from "@/generated/prisma/enums";
+import { isPermission, PERMISSION_LABELS } from "@/server/authz/permissions";
 
 export const ACTION_LABELS: Record<AuditAction, string> = {
   CREATE: "Alta",
@@ -43,12 +45,97 @@ export const MODULE_LABELS: Record<string, string> = {
 
 export const moduleLabel = (module: string) => MODULE_LABELS[module] ?? module;
 
-/** Nombres de los campos más comunes en los cambios; el resto se muestra con su nombre técnico. */
+/** Nombre visible del tipo de registro afectado; uno desconocido se muestra tal cual. */
+export const ENTITY_LABELS: Record<string, string> = {
+  Employee: "Legajo",
+  EmployeeBankAccount: "Cuenta sueldo",
+  EmployeeExit: "Egreso",
+  Document: "Documento",
+  ImportJob: "Importación",
+  LeaveRecord: "Licencia o ausencia",
+  VacationBalance: "Período de vacaciones",
+  VacationRule: "Reglas de vacaciones",
+  AttendanceDay: "Registro de asistencia",
+  WorkSchedule: "Horario",
+  Holiday: "Feriado",
+  Novelty: "Novedad",
+  SalaryHistory: "Sueldo básico",
+  PayrollRecord: "Resumen informado",
+  AlertDismissal: "Alerta",
+  Listado: "Listado",
+  Reporte: "Reporte",
+  User: "Usuario",
+  Role: "Rol",
+  Session: "Sesión",
+  Setting: "Parámetros",
+  Company: "Datos de la empresa",
+  Department: "Sector",
+  Position: "Puesto",
+  Workplace: "Establecimiento",
+  CollectiveAgreement: "Convenio colectivo",
+  Category: "Categoría",
+  ContractType: "Tipo de contrato",
+  WorkdayType: "Tipo de jornada",
+  HealthInsurer: "Obra social",
+  ArtProvider: "ART",
+  Bank: "Banco",
+  DocumentType: "Tipo de documento",
+  LeaveType: "Tipo de licencia o ausencia",
+  NoveltyType: "Tipo de novedad",
+  SalaryConceptType: "Concepto salarial",
+  LookupValue: "Opción de lista",
+};
+
+export const entityLabel = (entityType: string) => ENTITY_LABELS[entityType] ?? entityType;
+
+/** Catálogo de Configuración de cada tipo de registro (las opciones de lista comparten campos). */
+export const CATALOG_ENTITIES: Record<string, CatalogKey> = {
+  Department: "sectores",
+  Position: "puestos",
+  Workplace: "establecimientos",
+  CollectiveAgreement: "convenios",
+  Category: "categorias",
+  ContractType: "tipos-contrato",
+  WorkdayType: "jornadas",
+  HealthInsurer: "obras-sociales",
+  ArtProvider: "art",
+  Bank: "bancos",
+  DocumentType: "tipos-documento",
+  LeaveType: "tipos-licencia",
+  NoveltyType: "tipos-novedad",
+  SalaryConceptType: "conceptos-salariales",
+  LookupValue: "estado-civil",
+};
+
+/**
+ * Nombres de los campos que aparecen en los cambios; el resto se muestra con
+ * su nombre técnico. Los parámetros y los catálogos usan las etiquetas de su
+ * propio formulario (ver `diff.ts`). El orden es el de las filas en el
+ * detalle: quién o qué, datos, fechas e importes, y al final el estado y las
+ * observaciones.
+ */
 export const FIELD_LABELS: Record<string, string> = {
+  employeeId: "Empleado",
   fileNumber: "Legajo",
   lastName: "Apellido",
   firstName: "Nombre",
   name: "Nombre",
+  label: "Nombre",
+  code: "Código",
+  email: "Email",
+  role: "Rol",
+  roleId: "Rol",
+  permissions: "Permisos",
+  legalName: "Razón social",
+  tradeName: "Nombre de fantasía",
+  cuit: "CUIT",
+  leaveTypeId: "Tipo de licencia o ausencia",
+  documentTypeId: "Tipo de documento",
+  noveltyTypeId: "Tipo de novedad",
+  exitType: "Tipo de egreso",
+  exitReason: "Motivo de egreso",
+  alertKey: "Alerta",
+  action: "Acción",
   dni: "DNI",
   cuil: "CUIL",
   birthDate: "Fecha de nacimiento",
@@ -60,7 +147,6 @@ export const FIELD_LABELS: Record<string, string> = {
   provinceId: "Provincia",
   postalCode: "Código postal",
   phone: "Teléfono",
-  email: "Email",
   emergencyContactName: "Contacto de emergencia",
   emergencyContactPhone: "Teléfono de emergencia",
   hireDate: "Fecha de ingreso",
@@ -68,7 +154,6 @@ export const FIELD_LABELS: Record<string, string> = {
   contractEndDate: "Fin de contrato",
   exitDate: "Fecha de egreso",
   exitId: "Egreso",
-  status: "Estado",
   departmentId: "Sector",
   positionId: "Puesto",
   categoryId: "Categoría",
@@ -81,44 +166,69 @@ export const FIELD_LABELS: Record<string, string> = {
   supervisorId: "Superior",
   healthInsurerId: "Obra social",
   artProviderId: "ART",
+  defaultWorkplaceId: "Establecimiento sugerido para legajos nuevos",
+  defaultArtProviderId: "ART sugerida para legajos nuevos",
   bankId: "Banco",
+  accountTypeId: "Tipo de cuenta",
   cbu: "CBU",
   alias: "Alias",
-  accountTypeId: "Tipo de cuenta",
-  employeeId: "Empleado",
+  date: "Fecha",
+  period: "Período",
+  year: "Período",
   effectiveDate: "Vigencia",
   startDate: "Desde",
   endDate: "Hasta",
-  date: "Fecha",
-  period: "Período",
-  days: "Días",
-  amount: "Importe",
-  quantity: "Cantidad",
-  notes: "Observaciones",
-  reason: "Motivo",
-  isActive: "Activo",
+  issueDate: "Fecha de emisión",
+  expiryDate: "Vencimiento",
+  until: "Pospuesta hasta",
   checkIn: "Entrada",
   checkOut: "Salida",
-  issueDate: "Emisión",
-  expiryDate: "Vencimiento",
-  fileName: "Archivo",
-  basicSalary: "Básico",
+  breakMinutes: "Descanso (min)",
+  weeklyHours: "Horas semanales",
+  days: "Días",
+  entitledDays: "Días que corresponden",
+  basis: "Criterio",
+  adjustmentDays: "Ajuste (días)",
+  adjustmentReason: "Motivo del ajuste",
+  carriedOverDays: "Arrastre de períodos anteriores (días)",
+  rules: "Reglas por antigüedad",
+  isNonWorkingOptional: "Día no laborable (optativo para el empleador)",
+  quantity: "Cantidad",
+  amount: "Importe",
+  basicSalary: "Sueldo básico",
   grossReported: "Bruto informado",
   deductionsReported: "Descuentos informados",
   netReported: "Neto informado",
-  roleId: "Rol",
-  permissions: "Permisos",
+  lines: "Conceptos",
+  conceptTypeId: "Concepto",
+  description: "Descripción",
+  vacationBalanceId: "Período de vacaciones",
+  leaveRecordId: "Licencia o ausencia",
+  fileName: "Archivo",
+  fileId: "Archivo",
+  sensitive: "Documentación sensible",
+  recurso: "Recurso",
+  formato: "Formato",
+  tablas: "Tablas",
   filtros: "Filtros",
   filas: "Filas",
-  formato: "Formato",
-  recurso: "Recurso",
+  totalRows: "Filas leídas",
+  created: "Legajos creados",
+  skipped: "Filas sin importar",
+  sourceType: "Origen",
+  sourceId: "Registro de origen",
+  status: "Estado",
+  employeeStatus: "Estado del empleado",
+  isActive: "Activo",
+  decisionNotes: "Observaciones de la decisión",
+  reason: "Motivo de la anulación",
+  notes: "Observaciones",
 };
 
-/** Pantalla del registro afectado, cuando existe una. */
-export function entityHref(entityType: string | null, entityId: string | null): string | null {
-  if (!entityType || !entityId) return null;
-  if (entityType === "Employee") return `/empleados/${entityId}`;
-  if (entityType === "User") return `/usuarios/${entityId}`;
-  if (entityType === "ImportJob") return `/importar/${entityId}`;
-  return null;
+const DENIED = /^Falta el permiso ([a-z.:-]+)$/;
+
+/** El detalle de un acceso denegado guarda el código del permiso: se muestra su nombre. */
+export function auditMessage(message: string | null): string | null {
+  const code = message ? DENIED.exec(message)?.[1] : undefined;
+  return code && isPermission(code) ? `Falta el permiso "${PERMISSION_LABELS[code]}"` : message;
 }

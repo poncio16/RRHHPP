@@ -92,6 +92,60 @@ describe("visor de auditoría", () => {
     expect(await errorOf(getAuditEntry(admin, "0190a000-0000-7000-8000-0000000000ff"))).toBeInstanceOf(NotFoundError);
   });
 
+  it("nombra el registro afectado y muestra un cambio de rol una sola vez, por su nombre", async () => {
+    const [from, to] = await Promise.all([
+      db.role.findUniqueOrThrow({ where: { code: "CONSULTA" } }),
+      db.role.findUniqueOrThrow({ where: { code: "RRHH" } }),
+    ]);
+    const user = await createTestUser("CONSULTA");
+    const { id } = await db.auditLog.create({
+      data: {
+        module: `${tag}-rol`,
+        userId: admin.userId,
+        action: "PERMISSION_CHANGE",
+        entityType: "User",
+        entityId: user.id,
+        before: { roleId: from.id, role: from.name },
+        after: { roleId: to.id, role: to.name },
+      },
+    });
+    const entry = await getAuditEntry(admin, id);
+    expect(entry.record).toEqual({
+      label: "Usuario",
+      name: `${user.name} (${user.email})`,
+      href: `/usuarios/${user.id}`,
+    });
+    expect(entry.diff).toEqual([{ field: "role", label: "Rol", before: from.name, after: to.name, changed: true }]);
+  });
+
+  it("sin permiso para datos de salud, un tipo de licencia sensible se muestra reservado", async () => {
+    const type = await db.leaveType.create({
+      data: { name: `Enfermedad ${tag}`, class: "LICENCIA", countingMode: "CORRIDOS", isSensitive: true },
+    });
+    const { id } = await db.auditLog.create({
+      data: {
+        module: `${tag}-salud`,
+        userId: admin.userId,
+        action: "CREATE",
+        entityType: "LeaveRecord",
+        after: { leaveTypeId: type.id, status: "SOLICITADA" },
+      },
+    });
+    const withoutHealth: ActorContext = {
+      ...admin,
+      permissions: new Set([...admin.permissions].filter((p) => p !== "document.sensitive:read")),
+    };
+    const shown = async (ctx: ActorContext) => (await getAuditEntry(ctx, id)).diff.map((r) => [r.label, r.after]);
+    expect(await shown(admin)).toEqual([
+      ["Tipo de licencia o ausencia", type.name],
+      ["Estado", "Solicitada"],
+    ]);
+    expect(await shown(withoutHealth)).toEqual([
+      ["Tipo de licencia o ausencia", "Licencia (dato reservado)"],
+      ["Estado", "Solicitada"],
+    ]);
+  });
+
   it("se exporta con los filtros y la exportación también queda auditada", async () => {
     const file = await exportResource(admin, "auditoria", { modulo: tag, accion: "UPDATE", formato: "csv" });
     expect(file.fileName).toMatch(/^auditoria-\d{4}-\d{2}-\d{2}\.csv$/);

@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { AuditAction, AuditResult } from "@/generated/prisma/enums";
 import { formatDateTime } from "@/lib/format";
-import { ACTION_LABELS, moduleLabel, RESULT_LABELS } from "../constants";
+import { ACTION_LABELS, auditMessage, moduleLabel, RESULT_LABELS } from "../constants";
 
 export type AuditListItem = {
   id: string;
@@ -38,7 +38,9 @@ export function AuditTable({ items }: { items: AuditListItem[] }) {
             </TableCell>
             <TableCell className="align-top">
               <span className="font-medium">{ACTION_LABELS[e.action]}</span>
-              {e.message && <span className="text-muted-foreground block text-xs break-words">{e.message}</span>}
+              {e.message && (
+                <span className="text-muted-foreground block text-xs break-words">{auditMessage(e.message)}</span>
+              )}
               <span className="text-muted-foreground block text-xs md:hidden">
                 {e.user?.name ?? e.userEmail ?? "Sin usuario"} · {moduleLabel(e.module)}
               </span>

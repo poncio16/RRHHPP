@@ -64,7 +64,7 @@ async function EmployeesContent({ searchParams }: Pick<Props, "searchParams">) {
           <SearchInput
             placeholder={canSeePersonal ? "Buscar por nombre, legajo, DNI o CUIL" : "Buscar por nombre o legajo"}
           />
-          <div className="grid grid-cols-2 gap-2 sm:flex">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <FilterSelect
               name="status"
               label="Estado"

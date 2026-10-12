@@ -341,7 +341,8 @@ export async function updateNovelty(ctx: ActorContext, id: string, input: unknow
     amount: data.amount,
     notes: data.notes,
   };
-  const diff = auditDiff(auditable(current), auditable(next));
+  // El estado no se compara: guardar sin cambios no devuelve a pendiente una novedad aprobada.
+  const diff = auditDiff(auditable({ ...current, status: undefined }), auditable(next));
   if (!diff) return { status: NOVELTY_STATUS_LABELS[current.status as NoveltyStatus] };
 
   await repo.transaction(async (tx) => {

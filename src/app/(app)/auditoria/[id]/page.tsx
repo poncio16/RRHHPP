@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ACTION_LABELS, entityHref, moduleLabel, RESULT_LABELS } from "@/features/audit/constants";
+import { ACTION_LABELS, moduleLabel, RESULT_LABELS } from "@/features/audit/constants";
 import { getAuditEntry } from "@/features/audit/service";
 import { formatDateTime } from "@/lib/format";
 import { z } from "@/lib/zod";
@@ -40,7 +40,7 @@ async function Content({ params }: Pick<Props, "params">) {
     if (error instanceof NotFoundError) notFound();
     throw error;
   });
-  const href = entityHref(entry.entityType, entry.entityId);
+  const record = entry.record;
   const isUpdate = entry.diff.some((row) => row.changed) || (entry.before !== null && entry.after !== null);
 
   const facts: [string, React.ReactNode][] = [
@@ -58,19 +58,32 @@ async function Content({ params }: Pick<Props, "params">) {
     ["Módulo", moduleLabel(entry.module)],
     [
       "Registro afectado",
-      entry.entityType ? (
-        <span className="break-all">
-          {entry.entityType}{" "}
-          {href ? (
-            <Link href={href} className="text-primary hover:underline">
-              {entry.entityId}
+      record ? (
+        <span>
+          {record.label}
+          {(record.name ?? entry.entityId) && (
+            <>
+              {": "}
+              {record.href ? (
+                <Link
+                  href={record.href}
+                  className={`text-primary hover:underline ${wrap(record.name ?? entry.entityId)}`}
+                >
+                  {record.name ?? entry.entityId}
+                </Link>
+              ) : (
+                <span className={wrap(record.name ?? entry.entityId)}>{record.name ?? entry.entityId}</span>
+              )}
+            </>
+          )}
+          {!record.name && !entry.entityId && record.href && (
+            <Link href={record.href} className="text-primary ml-2 text-xs whitespace-nowrap hover:underline">
+              Ver pantalla
             </Link>
-          ) : (
-            entry.entityId
           )}
           {entry.entityId && (
             <Link
-              href={`/auditoria?entidad=${encodeURIComponent(entry.entityType)}&registro=${encodeURIComponent(entry.entityId)}`}
+              href={`/auditoria?entidad=${encodeURIComponent(entry.entityType!)}&registro=${encodeURIComponent(entry.entityId)}`}
               className="text-primary ml-2 text-xs whitespace-nowrap hover:underline"
             >
               Otros eventos de este registro
@@ -134,9 +147,13 @@ async function Content({ params }: Pick<Props, "params">) {
                 {entry.diff.map((row) => (
                   <TableRow key={row.field || row.label}>
                     <TableCell className="text-muted-foreground align-top">{row.label}</TableCell>
-                    {isUpdate && <TableCell className={`align-top ${wrap(row.before)}`}>{row.before ?? "—"}</TableCell>}
+                    {isUpdate && (
+                      <TableCell className={`align-top whitespace-pre-line ${wrap(row.before)}`}>
+                        {row.before ?? "—"}
+                      </TableCell>
+                    )}
                     <TableCell
-                      className={`align-top ${wrap(isUpdate ? row.after : (row.after ?? row.before))} ${row.changed ? "font-medium" : ""}`}
+                      className={`align-top whitespace-pre-line ${wrap(isUpdate ? row.after : (row.after ?? row.before))} ${row.changed ? "font-medium" : ""}`}
                     >
                       {(isUpdate ? row.after : (row.after ?? row.before)) ?? "—"}
                     </TableCell>
@@ -147,8 +164,8 @@ async function Content({ params }: Pick<Props, "params">) {
           </Card>
         )}
         <p className="text-muted-foreground text-xs">
-          Sectores, puestos, catálogos y empleados se muestran por su nombre actual; otros identificadores, como se
-          guardaron. Las contraseñas nunca se registran y el CBU queda enmascarado.
+          Catálogos, empleados y demás registros referidos se muestran por su nombre actual; lo que ya no existe, con el
+          identificador que se guardó. Las contraseñas nunca se registran y el CBU queda enmascarado.
         </p>
       </div>
     </>

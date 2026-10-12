@@ -83,9 +83,9 @@ const DEMO: DemoLeave[] = [
   { file: 6, type: "Vacaciones", from: 45, to: 58, status: "SOLICITADA", period: 2026, notes: "Viaje familiar." },
   { file: 9, type: "Enfermedad", from: -3, to: 4, status: "APROBADA" },
   { file: 12, type: "Ausencia sin aviso", from: -20, to: -20, status: "APROBADA" },
+  { file: 13, type: "Paternidad", from: -120, to: -119, status: "APROBADA" },
   { file: 14, type: "Vacaciones", from: -240, to: -227, status: "APROBADA", period: 2025 },
   { file: 15, type: "Examen", from: 10, to: 11, status: "SOLICITADA", notes: "Final de Contabilidad II." },
-  { file: 16, type: "Paternidad", from: -120, to: -119, status: "APROBADA" },
   { file: 17, type: "Matrimonio", from: -200, to: -191, status: "APROBADA" },
   {
     file: 18,
