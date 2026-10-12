@@ -43,7 +43,15 @@ export const MODULE_LABELS: Record<string, string> = {
   auditoria: "Auditoría",
 };
 
-export const moduleLabel = (module: string) => MODULE_LABELS[module] ?? module;
+/**
+ * Valor de un mapa solo si la clave es propia: las claves que vienen de un
+ * evento (por ejemplo, los filtros de una exportación) pueden ser
+ * "constructor" o "toString", que un objeto común hereda.
+ */
+export const own = <T>(map: Record<string, T>, key: string): T | undefined =>
+  Object.hasOwn(map, key) ? map[key] : undefined;
+
+export const moduleLabel = (module: string) => own(MODULE_LABELS, module) ?? module;
 
 /** Nombre visible del tipo de registro afectado; uno desconocido se muestra tal cual. */
 export const ENTITY_LABELS: Record<string, string> = {
@@ -86,7 +94,7 @@ export const ENTITY_LABELS: Record<string, string> = {
   LookupValue: "Opción de lista",
 };
 
-export const entityLabel = (entityType: string) => ENTITY_LABELS[entityType] ?? entityType;
+export const entityLabel = (entityType: string) => own(ENTITY_LABELS, entityType) ?? entityType;
 
 /** Catálogo de Configuración de cada tipo de registro (las opciones de lista comparten campos). */
 export const CATALOG_ENTITIES: Record<string, CatalogKey> = {

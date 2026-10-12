@@ -1,4 +1,4 @@
-import { ALERT_KIND_LABELS, type AlertKind } from "@/features/alerts/constants";
+import { ALERT_KIND_LABELS } from "@/features/alerts/constants";
 import { CATALOGS, type CatalogField } from "@/features/catalogs/definitions";
 import { ATTENDANCE_STATUS_LABELS } from "@/features/attendance/constants";
 import { DOCUMENT_STATUS_LABELS } from "@/features/documents/constants";
@@ -13,7 +13,15 @@ import { formatDate, formatDateTime, formatMoney, formatPeriod, parsePeriod } fr
 import { formatCuil } from "@/lib/validators/cuil";
 import { isPermission, PERMISSION_LABELS } from "@/server/authz/permissions";
 import { SETTING_DEFINITIONS, type SettingFieldMeta } from "@/server/settings/definitions";
-import { ACTION_LABELS, CATALOG_ENTITIES, entityLabel, FIELD_LABELS, moduleLabel, RESULT_LABELS } from "./constants";
+import {
+  ACTION_LABELS,
+  CATALOG_ENTITIES,
+  entityLabel,
+  FIELD_LABELS,
+  moduleLabel,
+  own,
+  RESULT_LABELS,
+} from "./constants";
 
 /*
  * Antes y después de un evento como filas legibles. Los valores llegan como
@@ -136,6 +144,18 @@ const FILTER_VALUES: Record<string, (value: string) => string | undefined> = {
   entidad: entityLabel,
 };
 
+/** Filtros que pueden ser un mes ("2026-03"): el período de un listado o los extremos de Altas y bajas. */
+const PERIOD_FILTERS = new Set(["periodo", "desde", "hasta"]);
+
+const entityOwn = <T>(
+  map: Record<string, Record<string, T>>,
+  entityType: string | null | undefined,
+  field: string,
+): T | undefined => {
+  const byField = entityType ? own(map, entityType) : undefined;
+  return byField ? own(byField, field) : undefined;
+};
+
 const MONEY_FIELDS = new Set(["amount", "basicSalary", "grossReported", "deductionsReported", "netReported"]);
 const NUMBER_FIELDS = new Set(["weeklyHours", "quantity"]);
 const numberFormatter = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
@@ -147,7 +167,7 @@ function settingField(entityId: string | null | undefined, field: string): Setti
 }
 
 function catalogField(entityType: string | null | undefined, field: string): CatalogField | undefined {
-  const key = entityType ? CATALOG_ENTITIES[entityType] : undefined;
+  const key = entityType ? own(CATALOG_ENTITIES, entityType) : undefined;
   return key ? CATALOGS[key].fields.find((f) => f.name === field) : undefined;
 }
 
@@ -159,8 +179,8 @@ function fieldLabel(field: string, entityType: string | null | undefined, entity
   }
   return (
     catalogField(entityType, field)?.label ??
-    (entityType ? ENTITY_FIELD_LABELS[entityType]?.[field] : undefined) ??
-    FIELD_LABELS[field] ??
+    entityOwn(ENTITY_FIELD_LABELS, entityType, field) ??
+    own(FIELD_LABELS, field) ??
     field
   );
 }
@@ -172,7 +192,7 @@ function fieldOrder(entityType: string | null | undefined, entityId: string | nu
       SETTING_DEFINITIONS[entityId as keyof typeof SETTING_DEFINITIONS].fields;
     return fields.map((f) => f.name);
   }
-  const key = entityType ? CATALOG_ENTITIES[entityType] : undefined;
+  const key = entityType ? own(CATALOG_ENTITIES, entityType) : undefined;
   if (key) return [...CATALOGS[key].fields.map((f) => f.name), "isActive"];
   return FIELD_KEYS;
 }
@@ -180,10 +200,10 @@ function fieldOrder(entityType: string | null | undefined, entityId: string | nu
 const FIELD_KEYS = Object.keys(FIELD_LABELS);
 
 function valueLabels(field: string, entityType: string | null | undefined): Record<string, string> | undefined {
-  if (field === "status") return entityType ? STATUS_LABELS_BY_ENTITY[entityType] : undefined;
+  if (field === "status") return entityType ? own(STATUS_LABELS_BY_ENTITY, entityType) : undefined;
   const choice = catalogField(entityType, field);
   if (choice?.type === "choice") return labelMap(choice.options);
-  return (entityType ? ENTITY_VALUE_LABELS[entityType]?.[field] : undefined) ?? VALUE_LABELS[field];
+  return entityOwn(ENTITY_VALUE_LABELS, entityType, field) ?? own(VALUE_LABELS, field);
 }
 
 type Formatter = { labels: Map<string, string>; entityType: string | null | undefined };
@@ -192,13 +212,14 @@ type Formatter = { labels: Map<string, string>; entityType: string | null | unde
 function scalar(field: string, value: Json | undefined, f: Formatter): string | null {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string") return formatAuditValue(value);
-  const known = f.labels.get(value) ?? valueLabels(field, f.entityType)?.[value];
+  const values = valueLabels(field, f.entityType);
+  const known = f.labels.get(value) ?? (values ? own(values, value) : undefined);
   if (known) return known;
   if (MONEY_FIELDS.has(field) && DECIMAL.test(value)) return formatMoney(value);
   if (NUMBER_FIELDS.has(field) && DECIMAL.test(value)) return numberFormatter.format(Number(value));
   if (field === "cuil" || field === "cuit") return formatCuil(value);
   if (field === "permissions" && isPermission(value)) return PERMISSION_LABELS[value];
-  if (field === "alertKey") return ALERT_KIND_LABELS[value.split(":")[0] as AlertKind] ?? value;
+  if (field === "alertKey") return own<string>(ALERT_KIND_LABELS, value.split(":")[0]!) ?? value;
   if (field === "days" && f.entityType === "WorkSchedule") return scheduleDays(value);
   if (ISO_PERIOD.test(value) && (field === "period" || field === "periodo")) {
     return formatPeriod(parsePeriod(value)) || value;
@@ -246,9 +267,9 @@ function display(field: string, value: Json | undefined, f: Formatter): string |
         typeof v !== "string"
           ? scalar(key, v, f)
           : (f.labels.get(v) ??
-            FILTER_VALUES[key]?.(v) ??
-            (ISO_PERIOD.test(v) ? formatPeriod(parsePeriod(v)) || v : scalar(key, v, f)));
-      return [`${FILTER_LABELS[key] ?? FIELD_LABELS[key] ?? key}: ${shown}`];
+            own(FILTER_VALUES, key)?.(v) ??
+            (PERIOD_FILTERS.has(key) && ISO_PERIOD.test(v) ? formatPeriod(parsePeriod(v)) || v : scalar(key, v, f)));
+      return [`${own(FILTER_LABELS, key) ?? own(FIELD_LABELS, key) ?? key}: ${shown}`];
     });
     return lines.length > 0 ? lines.join("\n") : null;
   }

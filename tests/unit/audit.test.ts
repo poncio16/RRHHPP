@@ -159,6 +159,17 @@ describe("auditoría: nombres y valores", () => {
     ]);
   });
 
+  it("los filtros de la URL se muestran tal cual aunque se llamen como algo de JavaScript", () => {
+    const [filters] = diffRows(
+      null,
+      { filtros: { toString: "1", constructor: "y", __defineGetter__: "1", q: "2026-03" } },
+      { entityType: "Listado" },
+    );
+    expect(filters!.after).toBe("toString: 1\nconstructor: y\n__defineGetter__: 1\nBúsqueda: 2026-03");
+    expect(entityLabel("toString")).toBe("toString");
+    expect(diffRows(null, { status: "constructor" }, { entityType: "constructor" })[0]!.after).toBe("constructor");
+  });
+
   it("los conceptos de un resumen y las reglas de vacaciones van uno por línea", () => {
     const concept = "0190a000-0000-7000-8000-0000000000d1";
     const [lines] = diffRows(

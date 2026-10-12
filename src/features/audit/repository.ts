@@ -4,6 +4,7 @@ import { labelsFor, type RefModel } from "@/features/employees/repository";
 import { RESERVED_TYPE_LABEL } from "@/features/leaves/constants";
 import { formatDate } from "@/lib/format";
 import { db } from "@/server/db";
+import { own } from "./constants";
 
 const listSelect = {
   id: true,
@@ -138,13 +139,13 @@ function refsOf(value: unknown): Ref[] {
   };
   for (const [field, v] of Object.entries(record)) {
     if (Array.isArray(v)) {
-      for (const item of v) for (const [k, id] of Object.entries(asRecord(item) ?? {})) add(REF_FIELDS[k], id);
+      for (const item of v) for (const [k, id] of Object.entries(asRecord(item) ?? {})) add(own(REF_FIELDS, k), id);
     } else if (field === "filtros") {
-      for (const [k, id] of Object.entries(asRecord(v) ?? {})) add(FILTER_REFS[k], id);
+      for (const [k, id] of Object.entries(asRecord(v) ?? {})) add(own(FILTER_REFS, k), id);
     } else if (field === "sourceId") {
-      add(SOURCE_REFS[String(record.sourceType)], v);
+      add(own(SOURCE_REFS, String(record.sourceType)), v);
     } else {
-      add(REF_FIELDS[field], v);
+      add(own(REF_FIELDS, field), v);
     }
   }
   return refs;
@@ -216,7 +217,7 @@ const LOADERS: Record<Exclude<AuditRef, RefModel>, Loader> = {
     })),
 };
 
-const isRefModel = (model: AuditRef): model is RefModel => !(model in LOADERS);
+const isRefModel = (model: AuditRef): model is RefModel => !Object.hasOwn(LOADERS, model);
 
 /**
  * Nombres de los catálogos, empleados y registros referidos en el antes y el
@@ -304,10 +305,8 @@ const CONTEXT_LOADERS: Record<string, ContextLoader> = {
   ArtProvider: (id) => db.artProvider.findUnique({ where: { id }, ...nameOnly }),
   Bank: (id) => db.bank.findUnique({ where: { id }, ...nameOnly }),
   DocumentType: (id) => db.documentType.findUnique({ where: { id }, ...nameOnly }),
-  LeaveType: async (id, { canSeeHealth }) => {
-    const t = await db.leaveType.findUnique({ where: { id }, select: { name: true, isSensitive: true } });
-    return t ? { name: leaveTypeName(t, canSeeHealth) } : null;
-  },
+  // Un tipo del catálogo no es un dato de salud de nadie: se nombra como en Configuración.
+  LeaveType: (id) => db.leaveType.findUnique({ where: { id }, ...nameOnly }),
   NoveltyType: (id) => db.noveltyType.findUnique({ where: { id }, ...nameOnly }),
   SalaryConceptType: (id) => db.salaryConceptType.findUnique({ where: { id }, ...nameOnly }),
   LookupValue: async (id) => {
@@ -327,6 +326,20 @@ const CONTEXT_LOADERS: Record<string, ContextLoader> = {
   SalaryHistory: owned((q) => db.salaryHistory.findUnique({ ...q, select: ownedSelect })),
   PayrollRecord: owned((q) => db.payrollRecord.findUnique({ ...q, select: ownedSelect })),
 };
+
+/** Nombres de los tipos de licencia sensibles (datos de salud). */
+export async function sensitiveLeaveTypeNames() {
+  return (await db.leaveType.findMany({ where: { isSensitive: true }, select: { name: true } })).map((t) => t.name);
+}
+
+/** De estas licencias, las que son de un tipo sensible. */
+export async function sensitiveLeaveRecordIds(ids: string[]) {
+  const rows = await db.leaveRecord.findMany({
+    where: { id: { in: ids.filter((id) => UUID.test(id)) }, leaveType: { isSensitive: true } },
+    select: { id: true },
+  });
+  return new Set(rows.map((r) => r.id));
+}
 
 /**
  * Nombre del registro afectado y, si pertenece a un legajo, el empleado.

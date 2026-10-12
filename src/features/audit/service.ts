@@ -1,23 +1,90 @@
 import "server-only";
 import { CATALOG_KEYS, CATALOGS } from "@/features/catalogs/definitions";
+import { RESERVED_TYPE_LABEL } from "@/features/leaves/constants";
 import { isReportSlug, REPORTS } from "@/features/reports/definitions";
 import { EXPORT_MAX_ROWS, type Column, type ReportResult } from "@/features/reports/table";
 import type { Prisma } from "@/generated/prisma/client";
 import { formatDate, formatDateTime, parseIsoDate, periodKey, zonedInstant } from "@/lib/format";
 import { paginate } from "@/lib/list/query";
-import { assertPermission, hasPermission } from "@/server/authz";
+import { ALL_PERMISSIONS, assertPermission, hasPermission, PERMISSION_LABELS } from "@/server/authz";
 import type { ActorContext } from "@/server/context";
 import { NotFoundError } from "@/server/errors";
 import { SETTING_DEFINITIONS } from "@/server/settings/definitions";
-import { ACTION_LABELS, auditMessage, CATALOG_ENTITIES, entityLabel, moduleLabel, RESULT_LABELS } from "./constants";
+import {
+  ACTION_LABELS,
+  auditMessage,
+  CATALOG_ENTITIES,
+  entityLabel,
+  moduleLabel,
+  own,
+  RESULT_LABELS,
+} from "./constants";
 import { diffRows } from "./diff";
 import * as repo from "./repository";
 import { auditListQuerySchema, type AuditListQuery } from "./schemas";
 
 const MODULE = "auditoria";
 
-/** Filtros → condición de búsqueda. Las fechas son días completos en la zona horaria de la empresa. */
-function whereOf(query: AuditListQuery): Prisma.AuditLogWhereInput {
+const fold = (text: string) =>
+  text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+/**
+ * Lo que un usuario sin permiso para datos de salud no puede ver de los
+ * eventos: los nombres de los tipos de licencia sensibles. El detalle de una
+ * licencia se guardó con el nombre del tipo, así que se reserva al leerlo.
+ */
+type HealthMask = { names: string[] } | null;
+
+async function healthMask(ctx: ActorContext): Promise<HealthMask> {
+  if (hasPermission(ctx, "document.sensitive:read")) return null;
+  // Los nombres más largos primero, por si uno contiene a otro.
+  return { names: (await repo.sensitiveLeaveTypeNames()).sort((a, b) => b.length - a.length) };
+}
+
+/**
+ * Detalle legible de un evento: el permiso de un acceso denegado por su
+ * nombre y, si corresponde, el tipo de licencia sensible reservado. Si el
+ * tipo de la licencia es sensible pero su nombre ya no aparece (se renombró),
+ * se reserva todo lo que sigue a "Acción: ".
+ */
+function readableMessage(
+  entry: { entityType: string | null; message: string | null },
+  mask: HealthMask,
+  sensitiveRecord = false,
+): string | null {
+  const message = auditMessage(entry.message);
+  if (!mask || !message || entry.entityType !== "LeaveRecord") return message;
+  const masked = mask.names.reduce((text, name) => text.replaceAll(name, RESERVED_TYPE_LABEL), message);
+  if (!sensitiveRecord || masked !== message) return masked;
+  const prefix = message.indexOf(": ");
+  return `${prefix > 0 ? message.slice(0, prefix + 2) : ""}${RESERVED_TYPE_LABEL}`;
+}
+
+/** Detalles de una página de eventos, con los tipos sensibles reservados si hace falta. */
+async function readableMessages<
+  T extends { entityType: string | null; entityId: string | null; message: string | null },
+>(items: T[], mask: HealthMask): Promise<T[]> {
+  const leaveIds = mask
+    ? items.filter((e) => e.entityType === "LeaveRecord" && e.entityId).map((e) => e.entityId!)
+    : [];
+  const sensitive = leaveIds.length > 0 ? await repo.sensitiveLeaveRecordIds(leaveIds) : new Set<string>();
+  return items.map((e) => ({ ...e, message: readableMessage(e, mask, !!e.entityId && sensitive.has(e.entityId)) }));
+}
+
+/**
+ * Filtros → condición de búsqueda. Las fechas son días completos en la zona
+ * horaria de la empresa. El texto busca también por el nombre del permiso de
+ * un acceso denegado (se guarda el código); sin permiso para datos de salud,
+ * una búsqueda que coincide con un tipo de licencia sensible no mira el
+ * detalle de las licencias.
+ */
+function whereOf(query: AuditListQuery, mask: HealthMask): Prisma.AuditLogWhereInput {
+  const q = query.q ? fold(query.q.replace(/"/g, "")).trim() : "";
+  const deniedCodes = q ? ALL_PERMISSIONS.filter((code) => fold(PERMISSION_LABELS[code]).includes(q)) : [];
+  const touchesHealth = !!mask && !!q && mask.names.some((name) => fold(name).includes(q) || q.includes(fold(name)));
   const from = query.desde ? parseIsoDate(query.desde) : null;
   const to = query.hasta ? parseIsoDate(query.hasta) : null;
   return {
@@ -38,8 +105,14 @@ function whereOf(query: AuditListQuery): Prisma.AuditLogWhereInput {
     ...(query.q
       ? {
           OR: [
-            { message: { contains: query.q, mode: "insensitive" } },
+            {
+              message: { contains: query.q, mode: "insensitive" },
+              ...(touchesHealth ? { NOT: { entityType: "LeaveRecord" } } : {}),
+            },
             { userEmail: { contains: query.q, mode: "insensitive" } },
+            ...(deniedCodes.length > 0
+              ? [{ action: "ACCESS_DENIED" as const, message: { in: deniedCodes.map((c) => `Falta el permiso ${c}`) } }]
+              : []),
           ],
         }
       : {}),
@@ -49,8 +122,13 @@ function whereOf(query: AuditListQuery): Prisma.AuditLogWhereInput {
 export async function listAuditLog(ctx: ActorContext, rawQuery: unknown) {
   await assertPermission(ctx, "audit:read", MODULE);
   const query = auditListQuerySchema.parse(rawQuery);
-  const { items, total } = await repo.listEntries(whereOf(query), (query.page - 1) * query.pageSize, query.pageSize);
-  return { ...paginate(items, total, query.page, query.pageSize), query };
+  const mask = await healthMask(ctx);
+  const { items, total } = await repo.listEntries(
+    whereOf(query, mask),
+    (query.page - 1) * query.pageSize,
+    query.pageSize,
+  );
+  return { ...paginate(await readableMessages(items, mask), total, query.page, query.pageSize), query };
 }
 
 export async function getAuditFilterOptions(ctx: ActorContext) {
@@ -110,15 +188,15 @@ async function affectedRecord(
   const found = id ? await repo.findEntityContext(type, id, options) : null;
   // Si ya no existe (un feriado eliminado), el nombre que quedó guardado en el evento.
   let name = found?.name ?? (id ? (snapshotName(entry.before) ?? snapshotName(entry.after)) : null);
-  let href = SCREENS[type] ?? null;
+  let href = own(SCREENS, type) ?? null;
   if (found && (type === "Employee" || type === "User" || type === "ImportJob")) {
     href = `${{ Employee: "/empleados", User: "/usuarios", ImportJob: "/importar" }[type]}/${id}`;
   } else if (type === "Session" && found?.userId) {
     href = `/usuarios/${found.userId}`;
-  } else if (EMPLOYEE_TABS[type] && found?.employeeId) {
+  } else if (own(EMPLOYEE_TABS, type) && found?.employeeId) {
     const month = type === "AttendanceDay" && found.date ? `?mes=${periodKey(found.date)}` : "";
     href = `/empleados/${found.employeeId}/${EMPLOYEE_TABS[type]}${month}`;
-  } else if (CATALOG_ENTITIES[type]) {
+  } else if (own(CATALOG_ENTITIES, type)) {
     const key =
       type === "LookupValue"
         ? CATALOG_KEYS.find((k) => found?.group && CATALOGS[k].lookupGroup === found.group)
@@ -146,14 +224,16 @@ export async function getAuditEntry(ctx: ActorContext, id: string) {
   const entry = await repo.findEntry(id);
   if (!entry) throw new NotFoundError("El evento no existe.");
   // Los tipos de licencia sensibles son datos de salud: mismo criterio que en Licencias.
-  const options = { canSeeHealth: hasPermission(ctx, "document.sensitive:read") };
-  const [labels, record] = await Promise.all([
+  const mask = await healthMask(ctx);
+  const options = { canSeeHealth: !mask };
+  const [labels, record, [readable]] = await Promise.all([
     repo.referenceLabels([entry.before, entry.after], options),
     affectedRecord(entry, options),
+    readableMessages([entry], mask),
   ]);
   return {
     ...entry,
-    message: auditMessage(entry.message),
+    message: readable!.message,
     record,
     diff: diffRows(entry.before, entry.after, { labels, entityType: entry.entityType, entityId: entry.entityId }),
   };
@@ -168,10 +248,12 @@ export function actorLabel(entry: { user: { name: string } | null; userEmail: st
 export async function exportAuditLog(ctx: ActorContext, rawQuery: unknown): Promise<ReportResult> {
   await assertPermission(ctx, "audit:read", MODULE);
   const query = auditListQuerySchema.parse(rawQuery);
+  const mask = await healthMask(ctx);
   const [{ items, total }, user] = await Promise.all([
-    repo.listEntries(whereOf(query), 0, EXPORT_MAX_ROWS),
+    repo.listEntries(whereOf(query, mask), 0, EXPORT_MAX_ROWS),
     query.usuario ? repo.findUser(query.usuario) : null,
   ]);
+  const rows = await readableMessages(items, mask);
   const columns: Column[] = [
     { key: "occurredAt", label: "Fecha y hora" },
     { key: "user", label: "Usuario" },
@@ -209,13 +291,13 @@ export async function exportAuditLog(ctx: ActorContext, rawQuery: unknown): Prom
         title: "Eventos",
         columns,
         empty: "No hay eventos con estos filtros.",
-        rows: items.map((e) => ({
+        rows: rows.map((e) => ({
           occurredAt: formatDateTime(e.occurredAt),
           user: e.user?.name ?? null,
           email: e.userEmail,
           action: ACTION_LABELS[e.action],
           module: moduleLabel(e.module),
-          message: auditMessage(e.message),
+          message: e.message,
           entity: e.entityType ? [entityLabel(e.entityType), e.entityId].filter(Boolean).join(" ") : null,
           result: RESULT_LABELS[e.result].label,
           ip: e.ip,

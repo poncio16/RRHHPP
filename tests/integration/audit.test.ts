@@ -129,6 +129,7 @@ describe("visor de auditoría", () => {
         action: "CREATE",
         entityType: "LeaveRecord",
         after: { leaveTypeId: type.id, status: "SOLICITADA" },
+        message: `Solicitud: ${type.name} de Pérez, Ana del 01/03/2026 al 05/03/2026`,
       },
     });
     const withoutHealth: ActorContext = {
@@ -144,6 +145,38 @@ describe("visor de auditoría", () => {
       ["Tipo de licencia o ausencia", "Licencia (dato reservado)"],
       ["Estado", "Solicitada"],
     ]);
+
+    // El detalle del evento también, en la pantalla, el listado y la exportación.
+    const reserved = "Solicitud: Licencia (dato reservado) de Pérez, Ana del 01/03/2026 al 05/03/2026";
+    expect((await getAuditEntry(admin, id)).message).toContain(type.name);
+    expect((await getAuditEntry(withoutHealth, id)).message).toBe(reserved);
+    const list = await listAuditLog(withoutHealth, { modulo: `${tag}-salud` });
+    expect(list.items.map((e) => e.message)).toEqual([reserved]);
+    const csv = String(
+      (await exportResource(withoutHealth, "auditoria", { modulo: `${tag}-salud`, formato: "csv" })).body,
+    );
+    expect(csv).toContain("Licencia (dato reservado)");
+    expect(csv).not.toContain(type.name);
+    // Buscar por el nombre del tipo no revela qué licencias lo tienen.
+    const search = async (ctx: ActorContext) =>
+      (await listAuditLog(ctx, { modulo: `${tag}-salud`, q: "enfermedad" })).items.map((e) => e.id);
+    expect(await search(admin)).toEqual([id]);
+    expect(await search(withoutHealth)).toEqual([]);
+  });
+
+  it("un acceso denegado nombra el permiso y se encuentra buscando ese nombre", async () => {
+    const { id } = await db.auditLog.create({
+      data: {
+        module: `${tag}-permiso`,
+        userId: rrhh.userId,
+        action: "ACCESS_DENIED",
+        result: "DENIED",
+        message: "Falta el permiso audit:read",
+      },
+    });
+    expect((await getAuditEntry(admin, id)).message).toBe('Falta el permiso "Ver auditoría"');
+    const found = await listAuditLog(admin, { modulo: `${tag}-permiso`, q: "ver auditoria" });
+    expect(found.items.map((e) => [e.id, e.message])).toEqual([[id, 'Falta el permiso "Ver auditoría"']]);
   });
 
   it("se exporta con los filtros y la exportación también queda auditada", async () => {
