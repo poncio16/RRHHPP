@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { isAvailable, visibleNavigation } from "./navigation";
+import { visibleNavigation } from "./navigation";
 
 export function SidebarNav({ permissions, onNavigate }: { permissions: readonly string[]; onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -19,21 +19,6 @@ export function SidebarNav({ permissions, onNavigate }: { permissions: readonly 
           <ul className="flex flex-col gap-0.5">
             {group.items.map((item) => {
               const Icon = item.icon;
-              if (!isAvailable(item)) {
-                return (
-                  <li key={item.href}>
-                    <span
-                      aria-disabled="true"
-                      title={`Se habilita en la Fase ${item.phase}`}
-                      className="text-sidebar-muted/70 flex cursor-not-allowed items-center gap-3 rounded-md px-3 py-1.5 text-sm"
-                    >
-                      <Icon className="size-4" aria-hidden />
-                      <span className="flex-1">{item.label}</span>
-                      <span className="text-[10px]">Fase {item.phase}</span>
-                    </span>
-                  </li>
-                );
-              }
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <li key={item.href}>

@@ -15,8 +15,5 @@ export async function checkStartup() {
     process.exit(1);
   }
   const { logger } = await import("./logger");
-  logger.info(
-    { appUrl: env.APP_URL, nodeEnv: env.NODE_ENV, trustedProxy: env.TRUSTED_PROXY },
-    "Aplicación iniciada",
-  );
+  logger.info({ appUrl: env.APP_URL, nodeEnv: env.NODE_ENV, trustedProxy: env.TRUSTED_PROXY }, "Aplicación iniciada");
 }

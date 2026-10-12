@@ -78,7 +78,7 @@ EXPECTED="$(wc -l <"$TMP/esperados")"
 if [ "$EXPECTED" -eq 0 ]; then
   echo "  La base no tiene archivos registrados."
 elif (cd "$TMP/archivos" && sha256sum --quiet -c "$TMP/esperados"); then
-  echo "  Archivos registrados en la base: $(plural "$EXPECTED" archivo archivos), todos en el backup y sin cambios."
+  echo "  Los archivos registrados en la base ($EXPECTED) están en el backup, sin cambios."
 else
   fail "hay archivos registrados en la base que faltan en el backup o no coinciden (ver arriba)."
 fi
@@ -98,4 +98,4 @@ if [ "$FAILURES" -gt 0 ]; then
   echo "Prueba de restauración FALLIDA ($FAILURES problemas) para $(basename "$SRC")." >&2
   exit 1
 fi
-echo "Prueba de restauración correcta para $(basename "$SRC"): $(plural "$TOTAL" fila filas) y $(plural "$EXPECTED" archivo archivos) verificados ($(date -u +%Y-%m-%dT%H:%MZ))."
+echo "Prueba de restauración correcta para $(basename "$SRC") ($(date -u +%Y-%m-%dT%H:%MZ)): $(plural "$TOTAL" fila filas), $(plural "$EXPECTED" archivo archivos)."

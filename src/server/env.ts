@@ -21,7 +21,7 @@ function loadEnv(): Env {
   if (!parsed.success) {
     const detail = parsed.error.issues.map((i) => `- ${i.path.join(".")}: ${i.message}`).join("\n");
     throw new Error(
-      `Variables de entorno inválidas o faltantes:\n${detail}\nRevisá el archivo .env (ver .env.example).`,
+      `Variables de entorno inválidas o faltantes:\n${detail}\nRevisá el archivo .env (ver .env.example; en producción, .env.production.example).`,
     );
   }
   return parsed.data;
