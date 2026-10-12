@@ -1,0 +1,27 @@
+# Nada de secretos, datos locales ni artefactos de build en la imagen.
+.git
+.claude
+.github
+node_modules
+.next
+src/generated
+*.tsbuildinfo
+next-env.d.ts
+coverage
+
+# Variables de entorno: el build no las necesita y Next copiaría .env a la imagen.
+.env*
+!.env.example
+!.env.production.example
+
+# Archivos adjuntos y backups locales (contienen datos personales).
+storage
+backups
+
+# Pruebas de punta a punta
+tests/e2e/.auth
+playwright-report
+test-results
+
+Dockerfile
+docker-compose*.yml
