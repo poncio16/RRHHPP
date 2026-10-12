@@ -17,6 +17,8 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
+    "db:seed:base": "tsx prisma/seed/index.ts --base",
+    "admin:recuperar": "tsx prisma/tools/recover-admin.ts",
     "postinstall": "prisma generate",
     "check": "npm run lint && npm run typecheck && npm run format:check && npm test",
     "test:e2e": "playwright test"

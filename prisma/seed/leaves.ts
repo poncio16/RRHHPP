@@ -4,10 +4,11 @@ import { vacationEntitlement } from "../../src/features/vacations/entitlement";
 import { defaultSetting } from "../../src/server/settings/definitions";
 
 /**
- * Tipos de licencia (los que pide el relevamiento; se editan desde
- * Configuración), reglas de vacaciones, períodos 2025 y 2026, y registros de
- * demostración. Los días se cuentan corridos y las reglas son los valores de
- * referencia de la LCT: todo queda "a validar" con el asesor laboral.
+ * Datos base: tipos de licencia (los que pide el relevamiento; se editan
+ * desde Configuración) y reglas de vacaciones. Datos de demostración:
+ * períodos 2025 y 2026 de los empleados y licencias de ejemplo. Los días se
+ * cuentan corridos y las reglas son los valores de referencia de la LCT: todo
+ * queda "a validar" con el asesor laboral.
  */
 type LeaveTypeSeed = {
   name: string;
@@ -106,9 +107,10 @@ const DEMO: DemoLeave[] = [
   { file: 21, type: "Vacaciones", from: 3, to: 9, status: "APROBADA", period: 2026 },
 ];
 
-export async function seedLeaves(db: PrismaClient): Promise<{ types: number; balances: number; records: number }> {
+/** Datos base: tipos de licencia y, si no hay ninguna, las reglas de vacaciones. */
+export async function seedLeaveCatalog(db: PrismaClient): Promise<{ leaveTypes: number; vacationRules: number }> {
   const existingTypes = new Set((await db.leaveType.findMany({ select: { name: true } })).map((t) => t.name));
-  const { count: types } = await db.leaveType.createMany({
+  const { count: leaveTypes } = await db.leaveType.createMany({
     data: LEAVE_TYPES.filter((t) => !existingTypes.has(t.name)).map((t, i) => ({
       ...t,
       countingMode: "CORRIDOS" as const,
@@ -116,8 +118,14 @@ export async function seedLeaves(db: PrismaClient): Promise<{ types: number; bal
     })),
   });
 
-  if ((await db.vacationRule.count()) === 0) await db.vacationRule.createMany({ data: VACATION_RULES });
+  // Las reglas se cargan solo si no hay ninguna: no se tocan las que se hayan editado en Configuración.
+  const vacationRules =
+    (await db.vacationRule.count()) === 0 ? (await db.vacationRule.createMany({ data: VACATION_RULES })).count : 0;
+  return { leaveTypes, vacationRules };
+}
 
+/** Datos de demostración: períodos de vacaciones del personal activo y licencias de ejemplo. */
+export async function seedDemoLeaves(db: PrismaClient): Promise<{ balances: number; records: number }> {
   // Períodos 2025 y 2026 de los empleados activos, calculados con las reglas y los parámetros por defecto.
   const rules = await db.vacationRule.findMany({ orderBy: { minSeniorityYears: "asc" } });
   const settings = defaultSetting("vacations");
@@ -171,7 +179,7 @@ export async function seedLeaves(db: PrismaClient): Promise<{ types: number; bal
 
   // Los registros de demostración se cargan una sola vez (sus fechas son relativas a hoy).
   const admin = await db.user.findFirst({ orderBy: { createdAt: "asc" } });
-  if (!admin || (await db.leaveRecord.count()) > 0) return { types, balances, records: 0 };
+  if (!admin || (await db.leaveRecord.count()) > 0) return { balances, records: 0 };
   const typeIds = new Map((await db.leaveType.findMany()).map((t) => [t.name, t.id]));
   const byFile = new Map(employees.map((e) => [e.fileNumber, e.id]));
   let records = 0;
@@ -216,5 +224,5 @@ export async function seedLeaves(db: PrismaClient): Promise<{ types: number; bal
     }
     records++;
   }
-  return { types, balances, records };
+  return { balances, records };
 }

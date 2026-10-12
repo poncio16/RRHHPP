@@ -1,5 +1,11 @@
-# PostgreSQL para desarrollo y tests. La app se ejecuta con `npm run dev`.
-# La configuración de producción se agrega en la Fase 16.
+# SOLO DESARROLLO: PostgreSQL para desarrollo y tests, con usuario y contraseña
+# conocidos y el puerto 5432 abierto. La app se ejecuta con `npm run dev`.
+# Producción: docker-compose.prod.yml y docs/operacion.md.
+
+# Nombre propio: aunque se ejecute por error en la carpeta de producción, no
+# comparte volúmenes con el proyecto "rrhh" de docker-compose.prod.yml.
+name: rrhh-desarrollo
+
 services:
   db:
     image: postgres:16-alpine

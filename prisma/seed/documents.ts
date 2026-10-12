@@ -4,9 +4,10 @@ import path from "node:path";
 import type { PrismaClient } from "../../src/generated/prisma/client";
 
 /**
- * Tipos de documento (los que pide el relevamiento; se editan desde
- * Configuración) y documentos de demostración para algunos empleados.
- * Las vigencias y anticipaciones quedan vacías: dependen de cada empresa.
+ * Tipos de documento (datos base: los que pide el relevamiento; se editan
+ * desde Configuración) y documentos de demostración para algunos empleados,
+ * con sus archivos en STORAGE_DIR. Las vigencias y anticipaciones de los
+ * tipos quedan vacías: dependen de cada empresa.
  */
 const DOCUMENT_TYPES: { name: string; isSensitive?: boolean; requiresExpiry?: boolean }[] = [
   { name: "DNI" },
@@ -82,12 +83,17 @@ const DEMO: DemoDocument[] = [
   { file: 24, type: "Alta laboral", issue: -65, attach: true },
 ];
 
-export async function seedDocuments(db: PrismaClient): Promise<number> {
+/** Datos base: tipos de documento. Devuelve cuántos creó. */
+export async function seedDocumentTypes(db: PrismaClient): Promise<number> {
   const existingTypes = new Set((await db.documentType.findMany()).map((t) => t.name));
-  await db.documentType.createMany({
+  const { count } = await db.documentType.createMany({
     data: DOCUMENT_TYPES.map((t, sortOrder) => ({ ...t, sortOrder })).filter((t) => !existingTypes.has(t.name)),
   });
+  return count;
+}
 
+/** Datos de demostración: documentos y archivos de algunos empleados ficticios. */
+export async function seedDemoDocuments(db: PrismaClient): Promise<number> {
   const admin = await db.user.findFirst({ orderBy: { createdAt: "asc" } });
   if (!admin) return 0;
   const types = new Map((await db.documentType.findMany()).map((t) => [t.name, t.id]));

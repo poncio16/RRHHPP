@@ -1,0 +1,81 @@
+# Producción: PostgreSQL, migraciones y aplicación en un servidor propio.
+# Instalación, actualización, backups y restauración: docs/operacion.md.
+#
+# Las variables salen del archivo .env junto a este (ver .env.production.example).
+# Con COMPOSE_FILE=docker-compose.prod.yml en ese .env, `docker compose ...`
+# usa este archivo y nunca el de desarrollo.
+
+name: rrhh
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-database-url: &database-url postgresql://${APP_DB_USER:-rrhh}:${APP_DB_PASSWORD:?Definí APP_DB_PASSWORD en .env}@db:5432/${APP_DB_NAME:-rrhh}?schema=public
+
+services:
+  db:
+    # Versión fija: un cambio de PostgreSQL o de ICU se hace a propósito (ver docs/operacion.md).
+    image: postgres:16.15-alpine3.24
+    restart: unless-stopped
+    command: ["postgres", "-c", "timezone=UTC"]
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definí POSTGRES_PASSWORD en .env}
+      APP_DB_NAME: ${APP_DB_NAME:-rrhh}
+      APP_DB_USER: ${APP_DB_USER:-rrhh}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Definí APP_DB_PASSWORD en .env}
+      TZ: UTC
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init-prod.sh:/docker-entrypoint-initdb.d/10-app-user.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U postgres -d "$${APP_DB_NAME}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  # Aplica las migraciones pendientes y termina ("Exited (0)" es lo esperado).
+  # La misma imagen sirve para el seed base y la recuperación del administrador.
+  migrate:
+    build:
+      context: .
+      target: tools
+    image: rrhh-tools:${APP_VERSION:-latest}
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: *database-url
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    logging: *logging
+
+  app:
+    build:
+      context: .
+      target: runner
+    image: rrhh-app:${APP_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: *database-url
+      APP_URL: ${APP_URL:?Definí APP_URL en .env}
+      TRUSTED_PROXY: ${TRUSTED_PROXY:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    # Solo para el proxy inverso del mismo servidor: no queda expuesto a internet.
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
+    logging: *logging
+
+volumes:
+  pgdata:
+  storage:

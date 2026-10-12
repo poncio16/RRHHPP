@@ -46,10 +46,17 @@ next-env.d.ts
 # Archivos adjuntos locales
 /storage/
 
-# env: solo se versiona el ejemplo
+# env: solo se versionan los ejemplos
 !.env.example
+!.env.production.example
+
+# Backups locales (scripts/backup.sh)
+/backups/
 
 # e2e (Playwright)
 /tests/e2e/.auth/
 /playwright-report/
 /test-results/
+
+# Worktrees temporales de agentes
+/.claude/worktrees/
