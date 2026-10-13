@@ -1,5 +1,6 @@
 "use client";
 
+import { CalendarClock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -10,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { saveAttendanceSheetAction } from "../actions";
-import { formatMinutes } from "../calc";
+import { formatMinutes, scheduleFill } from "../calc";
 import type { SheetRow } from "../service";
 import { AttendanceStatusBadge } from "./attendance-badges";
 
@@ -31,6 +32,37 @@ const same = (a: RowValues, b: RowValues) =>
   a.notes.trim() === b.notes.trim() &&
   a.absent === b.absent;
 
+/** Las horas siguen siendo las del horario que puso "Completar con el horario". */
+const asScheduled = (row: SheetRow, v: RowValues) =>
+  !!row.scheduled &&
+  !v.absent &&
+  v.checkIn === row.scheduled.checkIn &&
+  v.checkOut === row.scheduled.checkOut &&
+  v.breakMinutes === String(row.scheduled.breakMinutes);
+
+const plural = (n: number, one: string, many: string) => (n === 1 ? one : many.replace("{n}", String(n)));
+
+function fillNotice({ fill, notFinished, withoutSchedule }: ReturnType<typeof scheduleFill>) {
+  const parts = [
+    fill.length > 0
+      ? `${plural(fill.length, "Se completó 1 fila", "Se completaron {n} filas")} con el horario. Corregí lo distinto (ausencias, llegadas tarde, horas adicionales) y guardá la planilla.`
+      : "No quedan filas para completar con el horario.",
+  ];
+  if (notFinished > 0) {
+    parts.push(
+      plural(notFinished, "1 turno todavía no terminó", "{n} turnos todavía no terminaron") +
+        `: ${plural(notFinished, "completalo", "completalos")} más tarde.`,
+    );
+  }
+  if (withoutSchedule > 0) {
+    parts.push(
+      plural(withoutSchedule, "1 empleado no tiene", "{n} empleados no tienen") +
+        " horario asignado: cargá sus horas a mano.",
+    );
+  }
+  return parts.join(" ");
+}
+
 const FIELD_LABELS: Record<string, string> = {
   checkIn: "Entrada",
   checkOut: "Salida",
@@ -49,14 +81,20 @@ const COLUMNS =
 /**
  * Planilla de asistencia de un día: una fila por empleado con lo que se
  * esperaba (horario, franco, feriado o licencia) y la fichada. Se guardan
- * juntas solo las filas modificadas.
+ * juntas solo las filas modificadas. "Completar con el horario" llena las
+ * filas vacías con el turno de cada uno; no guarda nada hasta "Guardar".
  */
 export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: SheetRow[]; canEdit: boolean }) {
   const router = useRouter();
   const [values, setValues] = useState(() => new Map(rows.map((r) => [r.employee.id, valuesOf(r)])));
   const [errors, setErrors] = useState<Map<string, string[]>>(new Map());
   const [formError, setFormError] = useState<string>();
+  const [filled, setFilled] = useState<Set<string>>(new Set());
+  const [notice, setNotice] = useState<string>();
   const [pending, startTransition] = useTransition();
+
+  /** Filas que el horario puede completar (aunque ya tengan algo escrito o el turno no haya terminado). */
+  const fillable = rows.filter((r) => r.scheduled && !r.leave && !r.record).length;
 
   const changed = rows.filter((r) => !same(values.get(r.employee.id)!, valuesOf(r)));
   useUnsavedChanges(changed.length > 0);
@@ -70,6 +108,38 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
       next.delete(id);
       return next;
     });
+  };
+
+  const fillFromSchedule = () => {
+    const result = scheduleFill(
+      rows.map((row) => {
+        const v = values.get(row.employee.id)!;
+        return {
+          id: row.employee.id,
+          scheduled: row.scheduled,
+          open: row.workday && !row.leave && !row.record,
+          touched: v.absent || v.checkIn !== "" || v.checkOut !== "" || v.breakMinutes !== "" || v.notes.trim() !== "",
+        };
+      }),
+      new Date(),
+    );
+    const byId = new Map(rows.map((r) => [r.employee.id, r]));
+    setValues((current) => {
+      const next = new Map(current);
+      for (const id of result.fill) {
+        const scheduled = byId.get(id)!.scheduled!;
+        next.set(id, {
+          ...current.get(id)!,
+          checkIn: scheduled.checkIn,
+          checkOut: scheduled.checkOut,
+          breakMinutes: String(scheduled.breakMinutes),
+        });
+      }
+      return next;
+    });
+    setFilled((current) => new Set([...current, ...result.fill]));
+    setFormError(undefined);
+    setNotice(fillNotice(result));
   };
 
   /** Un día hábil sin fichada tiene que marcarse ausente para que quede registrado así. */
@@ -102,6 +172,7 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
         checkOut: v.absent ? "" : v.checkOut,
         breakMinutes: v.absent ? "" : v.breakMinutes,
         notes: v.notes,
+        fromSchedule: filled.has(row.employee.id) && asScheduled(row, v),
       };
     });
     startTransition(async () => {
@@ -133,6 +204,17 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
 
   return (
     <div>
+      {canEdit && fillable > 0 && (
+        <div className="flex flex-col gap-2 border-b px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted-foreground text-sm" aria-live="polite">
+            {notice ?? "Completá con el horario a quienes cumplieron su turno y corregí solo lo distinto."}
+          </p>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={fillFromSchedule} disabled={pending}>
+            <CalendarClock />
+            Completar con el horario
+          </Button>
+        </div>
+      )}
       <div className={cn("text-muted-foreground hidden border-b px-3 py-2 text-xs font-medium", COLUMNS)} aria-hidden>
         <span>Empleado</span>
         <span>Horario del día</span>
@@ -253,6 +335,8 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
                       <span className="text-warning-foreground">{row.record.lateMinutes} min tarde</span>
                     )}
                   </>
+                ) : filled.has(id) && asScheduled(row, v) ? (
+                  <span className="text-muted-foreground">Según el horario, sin guardar</span>
                 ) : (
                   <span className="text-muted-foreground">Sin cargar</span>
                 )}
@@ -291,6 +375,8 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
                 setValues(new Map(rows.map((r) => [r.employee.id, valuesOf(r)])));
                 setErrors(new Map());
                 setFormError(undefined);
+                setFilled(new Set());
+                setNotice(undefined);
               }}
             >
               Descartar

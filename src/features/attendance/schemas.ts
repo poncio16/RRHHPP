@@ -107,6 +107,8 @@ export const attendanceSheetSchema = z
           /** `updatedAt` del registro existente, o null si no había. */
           version: z.iso.datetime().nullable(),
           ...dayFields,
+          /** Horas puestas con "Completar con el horario" y no modificadas. */
+          fromSchedule: z.boolean().default(false),
         }),
       )
       .min(1, "No hay cambios para guardar.")

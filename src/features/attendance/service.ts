@@ -16,7 +16,9 @@ import {
   dayPlan,
   formatMinutes,
   isWorkday,
+  matchesSchedule,
   planLabel,
+  scheduledTimes,
   shiftInstants,
   spanMinutes,
   type DayPlan,
@@ -342,6 +344,8 @@ export async function getSheet(ctx: ActorContext, rawQuery: unknown) {
       plan: planLabel(plan),
       workday: isWorkday(plan),
       defaultBreak: plan.kind === "turno" ? plan.slot.breakMinutes : 0,
+      /** Lo que carga "Completar con el horario"; solo en un día del horario sin licencia. */
+      scheduled: plan.kind === "turno" && !leave ? scheduledTimes(date, plan.slot) : null,
       leave: leave ? leaveName(ctx, leave.leaveType) : null,
       record: record ? toItem(ctx, record) : null,
     };
@@ -382,8 +386,13 @@ function auditable(day: {
   };
 }
 
-const describe = (employee: { lastName: string; firstName: string }, date: Date, status: AttendanceStatus) =>
-  `Asistencia de ${fullName(employee)} del ${formatDate(date)}: ${ATTENDANCE_STATUS_LABELS[status].toLowerCase()}`;
+const describe = (
+  employee: { lastName: string; firstName: string },
+  date: Date,
+  status: AttendanceStatus,
+  fromSchedule = false,
+) =>
+  `Asistencia de ${fullName(employee)} del ${formatDate(date)}: ${ATTENDANCE_STATUS_LABELS[status].toLowerCase()}${fromSchedule ? " (completada con el horario)" : ""}`;
 
 const conflictFor = (employee: { lastName: string; firstName: string }) =>
   new ConflictError(
@@ -392,7 +401,8 @@ const conflictFor = (employee: { lastName: string; firstName: string }) =>
 
 /**
  * Guarda un día ya evaluado: lo crea, o lo actualiza si `version` coincide
- * con la del registro existente.
+ * con la del registro existente. `fromSchedule` deja constancia en la
+ * auditoría de que las horas se completaron con el horario.
  */
 async function persist(
   ctx: ActorContext,
@@ -401,6 +411,7 @@ async function persist(
   day: EvaluatedDay,
   version: string | null,
   tx: Prisma.TransactionClient,
+  fromSchedule = false,
 ) {
   const existing = await repo.findDay(employee.id, date, tx);
   const data = { ...day, updatedById: ctx.userId };
@@ -418,7 +429,7 @@ async function persist(
         entityType: "AttendanceDay",
         entityId: created.id,
         after: { employeeId: employee.id, ...auditable(created) },
-        message: describe(employee, date, created.status),
+        message: describe(employee, date, created.status, fromSchedule),
       },
       tx,
     );
@@ -437,7 +448,7 @@ async function persist(
         entityType: "AttendanceDay",
         entityId: existing.id,
         ...diff,
-        message: describe(employee, date, day.status),
+        message: describe(employee, date, day.status, fromSchedule),
       },
       tx,
     );
@@ -502,6 +513,8 @@ export async function previewDay(ctx: ActorContext, employeeId: string, input: u
 /**
  * Guarda la planilla de un día: solo las filas que cambiaron. Si una fila
  * tiene problemas no se guarda ninguna, y el error queda marcado en la fila.
+ * Una fila marcada `fromSchedule` se audita como completada con el horario
+ * solo si lo guardado es exactamente el turno de ese día.
  */
 export async function saveSheet(ctx: ActorContext, input: unknown) {
   await assertPermission(ctx, "attendance:write", MODULE);
@@ -520,12 +533,15 @@ export async function saveSheet(ctx: ActorContext, input: unknown) {
         return null;
       }
       const day = evaluateDay(ctx, employee, date, row, context, errors, `rows.${index}.`);
-      return day ? { employee, day, version: row.version } : null;
+      const fromSchedule = row.fromSchedule && matchesSchedule(planOf(employee, date, context), row);
+      return day ? { employee, day, version: row.version, fromSchedule } : null;
     });
     if (Object.keys(errors).length > 0) {
       throw new ValidationError("Hay filas con problemas: corregilas y volvé a guardar.", errors);
     }
-    for (const item of evaluated) await persist(ctx, item!.employee, date, item!.day, item!.version, tx);
+    for (const item of evaluated) {
+      await persist(ctx, item!.employee, date, item!.day, item!.version, tx, item!.fromSchedule);
+    }
     return { saved: evaluated.length };
   });
 }
