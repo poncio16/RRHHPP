@@ -12,7 +12,7 @@ import { ALERT_KIND_LABELS } from "@/features/alerts/constants";
 import { DistributionCard } from "@/features/dashboard/components/distribution-card";
 import { EventList } from "@/features/dashboard/components/event-list";
 import { StatTile } from "@/features/dashboard/components/stat-tile";
-import { getDashboard } from "@/features/dashboard/service";
+import { getDashboard, type PendingTask } from "@/features/dashboard/service";
 import { getSystemStatus } from "@/features/system/service";
 import {
   formatDate,
@@ -61,7 +61,7 @@ const people = (n: number) => (n === 1 ? "1 persona" : `${formatInteger(n)} pers
 async function Content({ searchParams }: Pick<Props, "searchParams">) {
   const { ctx } = await requirePageAccess();
   const data = await getDashboard(ctx, flattenSearchParams(await searchParams));
-  const { staff, movements, absence, leaves, alerts } = data;
+  const { staff, movements, absence, leaves, alerts, tasks } = data;
   const today = todayInTimeZone();
   const link = (period: Date | null) => (period ? `/dashboard?periodo=${periodKey(period)}` : null);
   const pendingAlerts = alerts ? Object.values(alerts.counts).reduce((a, b) => a + (b ?? 0), 0) : 0;
@@ -77,6 +77,7 @@ async function Content({ searchParams }: Pick<Props, "searchParams">) {
             description="Tu rol no tiene acceso a datos de personal. Pedile a quien administra el sistema que revise tus permisos."
           />
         </Card>
+        <TasksSection tasks={tasks} />
         {showConfig && <SystemStatusSection />}
       </div>
     );
@@ -84,6 +85,8 @@ async function Content({ searchParams }: Pick<Props, "searchParams">) {
 
   return (
     <div className="space-y-8">
+      <TasksSection tasks={tasks} />
+
       <section aria-labelledby="hoy" className="space-y-3">
         <h2 id="hoy" className="text-lg font-semibold">
           Hoy, {formatDate(today)}
@@ -311,6 +314,33 @@ async function Content({ searchParams }: Pick<Props, "searchParams">) {
 
       {showConfig && <SystemStatusSection />}
     </div>
+  );
+}
+
+/** Lo que hay que resolver, con enlace al listado filtrado. Sin nada pendiente, no se muestra. */
+function TasksSection({ tasks }: { tasks: PendingTask[] }) {
+  if (tasks.length === 0) return null;
+  return (
+    <section aria-labelledby="para-resolver" className="space-y-3">
+      <h2 id="para-resolver" className="text-lg font-semibold">
+        Para resolver
+      </h2>
+      <Card>
+        <ul className="divide-y">
+          {tasks.map((task) => (
+            <li key={task.key}>
+              <Link
+                href={task.href}
+                className="hover:bg-muted/50 flex items-center justify-between gap-3 px-4 py-3 text-sm"
+              >
+                <span>{task.label}</span>
+                <Badge variant="warning">{formatInteger(task.count)}</Badge>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Card>
+    </section>
   );
 }
 

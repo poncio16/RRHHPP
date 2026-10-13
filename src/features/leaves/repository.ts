@@ -55,6 +55,20 @@ const CLASS_FILTER: Record<NonNullable<LeaveListQuery["class"]>, LeaveClass> = {
   suspensiones: "SUSPENSION",
 };
 
+/**
+ * Registros cuyo tipo pide certificado y que no tienen ningún documento sin
+ * anular, con el mismo criterio que la columna "Certificado" del listado: sin
+ * permiso de datos de salud, los tipos y documentos sensibles no cuentan.
+ */
+export function missingCertificateWhere(includeSensitive: boolean): Prisma.LeaveRecordWhereInput {
+  return {
+    leaveType: { requiresCertificate: true, ...(includeSensitive ? {} : { isSensitive: false }) },
+    documents: {
+      none: { status: { not: "ANULADO" }, ...(includeSensitive ? {} : { documentType: { isSensitive: false } }) },
+    },
+  };
+}
+
 export async function listLeaves(
   query: LeaveListQuery,
   scope: { employeeId?: string; onlyClass?: LeaveClass; includeSensitive: boolean; today: Date },
@@ -74,6 +88,7 @@ export async function listLeaves(
       /^\d{1,9}$/.test(q) ? { employee: { fileNumber: Number(q) } } : { employeeId: { in: await idsMatchingName(q) } },
     );
   }
+  if (query.certificado === "falta") and.push(missingCertificateWhere(scope.includeSensitive));
   if (query.timing === "en-curso") and.push({ startDate: { lte: scope.today }, endDate: { gte: scope.today } });
   if (query.timing === "proximas") and.push({ startDate: { gt: scope.today } });
   if (query.timing === "finalizadas") and.push({ endDate: { lt: scope.today } });

@@ -40,6 +40,7 @@ async function LeavesContent({ searchParams }: Pick<Props, "searchParams">) {
     query.class ||
     query.leaveTypeId ||
     query.timing ||
+    query.certificado ||
     query.desde ||
     query.hasta ||
     query.status !== "vigentes"

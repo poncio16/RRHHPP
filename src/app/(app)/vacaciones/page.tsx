@@ -71,7 +71,7 @@ async function VacationsContent({ searchParams }: Pick<Props, "searchParams">) {
       <Card>
         <div className="flex flex-col gap-2 p-3">
           <SearchInput placeholder="Buscar por empleado o legajo" />
-          <LeaveFilters types={vacationTypes} withClass={false} />
+          <LeaveFilters types={vacationTypes} withClass={false} withCertificate={false} />
         </div>
         {result.items.length === 0 ? (
           <EmptyState

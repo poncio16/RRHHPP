@@ -43,6 +43,7 @@ async function Content({ params, searchParams }: Props) {
     result.query.class ||
     result.query.leaveTypeId ||
     result.query.timing ||
+    result.query.certificado ||
     result.query.desde ||
     result.query.hasta ||
     result.query.status !== "vigentes"

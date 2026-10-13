@@ -1,15 +1,20 @@
 import { DateFilter } from "@/components/list/date-filter";
 import { FilterSelect } from "@/components/list/filter-select";
 
-/** Filtros del listado de licencias (se guardan en la URL). `withClass` muestra el filtro por clase. */
+/**
+ * Filtros del listado de licencias (se guardan en la URL). `withClass` muestra
+ * el filtro por clase y `withCertificate`, el de certificado faltante.
+ */
 export function LeaveFilters({
   types,
   withClass,
   withPeriod = true,
+  withCertificate = true,
 }: {
   types: { id: string; name: string }[];
   withClass: boolean;
   withPeriod?: boolean;
+  withCertificate?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -47,6 +52,16 @@ export function LeaveFilters({
             { value: "todas", label: "Todas" },
           ]}
         />
+        {withCertificate && (
+          <FilterSelect
+            name="certificado"
+            label="Certificado"
+            options={[
+              { value: "", label: "Con o sin certificado" },
+              { value: "falta", label: "Falta el certificado" },
+            ]}
+          />
+        )}
         <FilterSelect
           name="timing"
           label="Momento"

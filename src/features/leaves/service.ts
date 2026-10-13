@@ -30,6 +30,13 @@ const canSeeHealth = (ctx: ActorContext) => hasPermission(ctx, "document.sensiti
 const leaveName = (ctx: ActorContext, type: { name: string; isSensitive: boolean }) =>
   type.isSensitive && !canSeeHealth(ctx) ? RESERVED_TYPE_LABEL : type.name;
 
+/** Adjuntar el certificado desde el listado: registrar licencias y ver y registrar documentación. */
+export function canAttachCertificate(ctx: ActorContext) {
+  return (
+    hasPermission(ctx, "leave:write") && hasPermission(ctx, "document:read") && hasPermission(ctx, "document:write")
+  );
+}
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /* ----------------------------------------------------------------------------
