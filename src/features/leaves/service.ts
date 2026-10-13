@@ -2,13 +2,24 @@ import "server-only";
 import { assertNoPresence, spanOf, syncWithLeaves } from "@/features/attendance/service";
 import type { Prisma } from "@/generated/prisma/client";
 import { formatDate, parseIsoDate, todayInTimeZone, toIsoDate } from "@/lib/format";
+import { EXPORT_MAX_ROWS, type Column, type ReportResult } from "@/features/reports/table";
 import { paginate } from "@/lib/list/query";
 import { auditDiff, recordAudit } from "@/server/audit";
 import { assertPermission, hasPermission } from "@/server/authz";
 import type { ActorContext } from "@/server/context";
 import { ConflictError, NotFoundError, ValidationError, type FieldErrors } from "@/server/errors";
 import { getSetting } from "@/server/settings";
-import { COUNTING_MODE_LABELS, LEAVE_STATUS_LABELS, RESERVED_TYPE_LABEL, type LeaveClass } from "./constants";
+import {
+  COUNTING_MODE_LABELS,
+  LEAVE_CLASS_FILTER_LABELS,
+  LEAVE_CLASS_LABELS,
+  LEAVE_STATUS_FILTER_LABELS,
+  LEAVE_STATUS_LABELS,
+  LEAVE_TIMING_FILTER_LABELS,
+  LEAVE_TIMING_LABELS,
+  RESERVED_TYPE_LABEL,
+  type LeaveClass,
+} from "./constants";
 import { countDays, defaultWorkDays, leaveTiming } from "./days";
 import * as repo from "./repository";
 import {
@@ -261,6 +272,117 @@ export async function listLeaves(
     ),
     query,
   };
+}
+
+const fullName = (e: { lastName: string; firstName: string }) => `${e.lastName}, ${e.firstName}`;
+
+/**
+ * Listado exportable con los mismos filtros, orden y reservas que la pantalla
+ * (`onlyClass` para Vacaciones): sin permiso de datos de salud, los tipos
+ * sensibles salen como licencia reservada y sin observaciones.
+ */
+async function exportLeaveList(
+  ctx: ActorContext,
+  rawQuery: unknown,
+  view: { title: string; id: string; onlyClass?: LeaveClass },
+): Promise<ReportResult> {
+  await assertPermission(ctx, "leave:read", MODULE);
+  const query = leaveListQuerySchema.parse(rawQuery);
+  const today = todayInTimeZone();
+  const healthVisible = canSeeHealth(ctx);
+  const [records, type] = await Promise.all([
+    repo.listLeavesForExport(
+      query,
+      { onlyClass: view.onlyClass, includeSensitive: healthVisible, today },
+      EXPORT_MAX_ROWS,
+    ),
+    query.leaveTypeId ? repo.findLeaveType(query.leaveTypeId) : null,
+  ]);
+  const items = records.map((row) => toListItem(row, today, healthVisible));
+  const allClasses = !view.onlyClass;
+  const columns: Column[] = [
+    { key: "legajo", label: "Legajo", type: "int" },
+    { key: "empleado", label: "Empleado" },
+    { key: "tipo", label: "Tipo" },
+    ...(allClasses ? [{ key: "clase", label: "Clase" }] : []),
+    { key: "periodo", label: "Período de vacaciones", type: "int" as const },
+    { key: "desde", label: "Desde", type: "date" as const },
+    { key: "hasta", label: "Hasta", type: "date" as const },
+    { key: "dias", label: "Días", type: "int" as const },
+    { key: "computo", label: "Cómputo" },
+    { key: "estado", label: "Estado" },
+    { key: "momento", label: "Momento" },
+    ...(allClasses ? [{ key: "certificado", label: "Certificado" }] : []),
+    { key: "cargo", label: "Cargó" },
+    { key: "decidio", label: "Aprobó o rechazó" },
+    { key: "observaciones", label: "Observaciones" },
+    { key: "decision", label: "Observaciones de la decisión" },
+  ];
+  return {
+    title: view.title,
+    filters: [
+      `Estado: ${LEAVE_STATUS_FILTER_LABELS[query.status]}`,
+      ...(allClasses && query.class ? [`Clase: ${LEAVE_CLASS_FILTER_LABELS[query.class]}`] : []),
+      ...(type ? [`Tipo: ${leaveName(ctx, type)}`] : []),
+      ...(allClasses && query.certificado ? ["Falta el certificado"] : []),
+      ...(query.timing ? [`Momento: ${LEAVE_TIMING_FILTER_LABELS[query.timing]}`] : []),
+      ...(query.desde || query.hasta
+        ? [
+            `Período: ${[
+              query.desde && `desde el ${formatDate(parseIsoDate(query.desde)!)}`,
+              query.hasta && `hasta el ${formatDate(parseIsoDate(query.hasta)!)}`,
+            ]
+              .filter(Boolean)
+              .join(" ")}`,
+          ]
+        : []),
+      ...(query.q ? [`Búsqueda: ${query.q}`] : []),
+      ...(items.length === EXPORT_MAX_ROWS ? [`Se exportaron las primeras ${EXPORT_MAX_ROWS} filas.`] : []),
+    ],
+    tables: [
+      {
+        id: view.id,
+        title: view.title,
+        columns,
+        rows: items.map((item) => {
+          const active = item.status === "SOLICITADA" || item.status === "APROBADA";
+          return {
+            legajo: item.employee.fileNumber,
+            empleado: fullName(item.employee),
+            tipo: item.leaveType.name,
+            ...(allClasses ? { clase: LEAVE_CLASS_LABELS[item.leaveType.class] } : {}),
+            periodo: item.vacationYear,
+            desde: item.startDate,
+            hasta: item.endDate,
+            dias: item.days,
+            computo: COUNTING_MODE_LABELS[item.leaveType.countingMode],
+            estado: LEAVE_STATUS_LABELS[item.status],
+            momento: active ? LEAVE_TIMING_LABELS[item.timing] : null,
+            ...(allClasses
+              ? { certificado: active && item.certificate ? CERTIFICATE_LABELS[item.certificate] : null }
+              : {}),
+            cargo: item.requestedBy,
+            decidio: item.decidedBy,
+            observaciones: item.notes,
+            decision: item.decisionNotes,
+          };
+        }),
+        empty: "No hay registros con estos filtros.",
+      },
+    ],
+  };
+}
+
+const CERTIFICATE_LABELS = { PRESENTADO: "Presentado", FALTA: "Falta" } as const;
+
+/** Licencias y ausencias (/licencias) para Excel o CSV. */
+export function exportLeaves(ctx: ActorContext, rawQuery: unknown) {
+  return exportLeaveList(ctx, rawQuery, { title: "Licencias y ausencias", id: "licencias" });
+}
+
+/** Vacaciones (/vacaciones) para Excel o CSV. */
+export function exportVacations(ctx: ActorContext, rawQuery: unknown) {
+  return exportLeaveList(ctx, rawQuery, { title: "Vacaciones", id: "vacaciones", onlyClass: "VACACIONES" });
 }
 
 /** Tipos visibles para el usuario, para filtros y formularios. */

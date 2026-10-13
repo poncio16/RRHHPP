@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as leaves from "@/features/leaves/service";
-import { RESERVED_TYPE_LABEL } from "@/features/leaves/constants";
+import { LEAVE_STATUS_LABELS, RESERVED_TYPE_LABEL } from "@/features/leaves/constants";
+import { exportResource } from "@/features/reports/export";
 import * as vacations from "@/features/vacations/service";
 import type { ActorContext } from "@/server/context";
 import { db } from "@/server/db";
@@ -386,5 +387,96 @@ describe("suspensiones", () => {
     const suspension = await leaves.getActiveSuspension(consulta, refs.other);
     expect(suspension).not.toBeNull();
     expect(await leaves.getActiveSuspension(consulta, refs.employee)).toBeNull();
+  });
+});
+
+describe("exportación", () => {
+  const rowsOf = (result: { tables: { rows: Record<string, unknown>[] }[] }) => result.tables[0]!.rows;
+  let query: Record<string, string>;
+
+  beforeAll(async () => {
+    const { fileNumber } = await db.employee.findUniqueOrThrow({ where: { id: refs.employee } });
+    query = { q: String(fileNumber), status: "todas", pageSize: "100" };
+  });
+
+  it("exporta los mismos registros y en el mismo orden que el listado", async () => {
+    const list = await leaves.listLeaves(rrhh, query);
+    expect(list.total).toBeGreaterThan(2);
+    const rows = rowsOf(await leaves.exportLeaves(rrhh, query));
+    expect(rows.map((r) => [r.tipo, r.desde, r.estado])).toEqual(
+      list.items.map((i) => [i.leaveType.name, i.startDate, LEAVE_STATUS_LABELS[i.status]]),
+    );
+
+    const file = await exportResource(rrhh, "licencias", { ...query, formato: "csv" });
+    expect(file.fileName).toMatch(/^licencias-\d{4}-\d{2}-\d{2}\.csv$/);
+    const audit = await lastAudit({ userId: rrhh.userId });
+    expect(audit).toMatchObject({ action: "EXPORT", module: "licencias" });
+    expect(audit?.message).toBe(`Exportó el listado Licencias y ausencias (CSV, ${list.total} filas)`);
+  });
+
+  it("describe los filtros aplicados", async () => {
+    const result = await leaves.exportLeaves(rrhh, {
+      status: "pendientes",
+      class: "licencias",
+      leaveTypeId: refs.study,
+      certificado: "falta",
+      timing: "proximas",
+      desde: "2031-01-01",
+      hasta: "2031-12-31",
+      q: "Ana",
+    });
+    expect(result.filters).toEqual([
+      "Estado: Pendientes de aprobación",
+      "Clase: Licencias",
+      `Tipo: Examen ${tag}`,
+      "Falta el certificado",
+      "Momento: Próximas",
+      "Período: desde el 01/01/2031 hasta el 31/12/2031",
+      "Búsqueda: Ana",
+    ]);
+  });
+
+  it("sin permiso de datos de salud el tipo sale reservado y sin observaciones", async () => {
+    const sickName = `Enfermedad ${tag}`;
+    const full = rowsOf(await leaves.exportLeaves(rrhh, query));
+    expect(full.find((r) => r.tipo === sickName)).toMatchObject({ observaciones: "Gripe", certificado: "Falta" });
+
+    const reserved = rowsOf(await leaves.exportLeaves(administracion, query));
+    expect(reserved.map((r) => r.tipo)).not.toContain(sickName);
+    expect(reserved.find((r) => r.tipo === RESERVED_TYPE_LABEL)).toMatchObject({
+      observaciones: null,
+      certificado: null,
+    });
+    const csv = String((await exportResource(administracion, "licencias", { ...query, formato: "csv" })).body);
+    expect(csv).toContain(RESERVED_TYPE_LABEL);
+    expect(csv).not.toContain(sickName);
+    expect(csv).not.toContain("Gripe");
+  });
+
+  it("Vacaciones exporta solo vacaciones, sin clase ni certificado", async () => {
+    const result = await leaves.exportVacations(rrhh, query);
+    const rows = rowsOf(result);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(new Set(rows.map((r) => r.tipo))).toEqual(new Set([`Vacaciones ${tag}`]));
+    expect(rows.every((r) => r.periodo === 2030)).toBe(true);
+    const keys = result.tables[0]!.columns.map((c) => c.key);
+    expect(keys).not.toContain("clase");
+    expect(keys).not.toContain("certificado");
+
+    const file = await exportResource(rrhh, "listado-vacaciones", { ...query, formato: "xlsx" });
+    expect(file.fileName).toMatch(/^listado-vacaciones-\d{4}-\d{2}-\d{2}\.xlsx$/);
+    expect((await lastAudit({ userId: rrhh.userId }))?.module).toBe("vacaciones");
+  });
+
+  it("el reporte de vacaciones sigue saliendo con su nombre", async () => {
+    const file = await exportResource(rrhh, "vacaciones", { formato: "csv" });
+    expect(file.fileName).toMatch(/^vacaciones-/);
+    expect((await lastAudit({ userId: rrhh.userId }))?.entityType).toBe("Reporte");
+  });
+
+  it("exportar pide además el permiso de exportar", async () => {
+    // Consulta ve licencias pero no exporta.
+    expect(await appErrorOf(exportResource(consulta, "licencias", query))).toBeInstanceOf(ForbiddenError);
+    expect(await appErrorOf(exportResource(consulta, "listado-vacaciones", query))).toBeInstanceOf(ForbiddenError);
   });
 });
