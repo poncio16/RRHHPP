@@ -38,9 +38,13 @@ const FIELD_LABELS: Record<string, string> = {
   notes: "Observaciones",
 };
 
-/** Columnas de la grilla en pantallas grandes (en móvil cada fila se apila). */
+/**
+ * Columnas de la grilla desde 1280 px; más angosto, cada fila se apila. Entrada
+ * y salida dejan lugar para el formato de 12 horas ("a. m."), que es el que
+ * muestra Chrome en español.
+ */
 const COLUMNS =
-  "lg:grid lg:grid-cols-[minmax(11rem,1.4fr)_minmax(7rem,0.8fr)_6.5rem_6.5rem_5rem_4.5rem_minmax(8rem,1fr)_8.5rem] lg:items-center lg:gap-3";
+  "xl:grid xl:grid-cols-[minmax(9rem,1.4fr)_minmax(6.5rem,0.8fr)_7.5rem_7.5rem_4.5rem_4rem_minmax(7rem,1fr)_minmax(7rem,0.8fr)] xl:items-center xl:gap-2.5";
 
 /**
  * Planilla de asistencia de un día: una fila por empleado con lo que se
@@ -153,24 +157,24 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
               className={cn("border-b px-3 py-3 last:border-b-0", COLUMNS, dirty && "bg-primary/5")}
               aria-label={name}
             >
-              <div className="mb-2 lg:mb-0">
+              <div className="mb-2 xl:mb-0">
                 <span className="font-medium">{name}</span>
                 <span className="text-muted-foreground block text-xs">
                   Legajo {row.employee.fileNumber} · {row.employee.department}
                 </span>
               </div>
-              <div className="text-muted-foreground mb-2 text-sm lg:mb-0">
+              <div className="text-muted-foreground mb-2 text-sm xl:mb-0">
                 {row.leave ? <span className="text-foreground">Con licencia: {row.leave}</span> : row.plan}
               </div>
               {row.leave ? (
-                <p className="text-muted-foreground text-xs lg:col-span-5">
+                <p className="text-muted-foreground text-xs xl:col-span-5">
                   El día está cubierto por la licencia: no se carga fichada.
                 </p>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:contents">
-                    <label className="flex flex-col gap-1 text-xs lg:contents">
-                      <span className="text-muted-foreground lg:sr-only">Entrada</span>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:contents">
+                    <label className="flex flex-col gap-1 text-xs xl:contents">
+                      <span className="text-muted-foreground xl:sr-only">Entrada</span>
                       <Input
                         type="time"
                         aria-label={`Entrada de ${name}`}
@@ -180,8 +184,8 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
                         onChange={(e) => update(id, { checkIn: e.target.value })}
                       />
                     </label>
-                    <label className="flex flex-col gap-1 text-xs lg:contents">
-                      <span className="text-muted-foreground lg:sr-only">Salida</span>
+                    <label className="flex flex-col gap-1 text-xs xl:contents">
+                      <span className="text-muted-foreground xl:sr-only">Salida</span>
                       <Input
                         type="time"
                         aria-label={`Salida de ${name}`}
@@ -191,8 +195,8 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
                         onChange={(e) => update(id, { checkOut: e.target.value })}
                       />
                     </label>
-                    <label className="flex flex-col gap-1 text-xs lg:contents">
-                      <span className="text-muted-foreground lg:sr-only">Descanso (min)</span>
+                    <label className="flex flex-col gap-1 text-xs xl:contents">
+                      <span className="text-muted-foreground xl:sr-only">Descanso (min)</span>
                       <Input
                         inputMode="numeric"
                         aria-label={`Descanso de ${name} en minutos`}
@@ -202,7 +206,7 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
                         onChange={(e) => update(id, { breakMinutes: e.target.value })}
                       />
                     </label>
-                    <label className="flex items-center gap-2 self-end pb-2 text-xs lg:self-auto lg:pb-0">
+                    <label className="flex items-center gap-2 self-end pb-2 text-xs xl:self-auto xl:pb-0">
                       {row.workday && (
                         <>
                           <Checkbox
@@ -218,13 +222,13 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
                               )
                             }
                           />
-                          <span className="lg:sr-only">Ausente</span>
+                          <span className="xl:sr-only">Ausente</span>
                         </>
                       )}
                     </label>
                   </div>
-                  <label className="mt-2 flex flex-col gap-1 text-xs lg:contents">
-                    <span className="text-muted-foreground lg:sr-only">Observaciones</span>
+                  <label className="mt-2 flex flex-col gap-1 text-xs xl:contents">
+                    <span className="text-muted-foreground xl:sr-only">Observaciones</span>
                     <Input
                       aria-label={`Observaciones de ${name}`}
                       value={v.notes}
@@ -235,7 +239,7 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
                   </label>
                 </>
               )}
-              <div className="mt-2 flex flex-wrap items-center gap-1 text-xs lg:mt-0">
+              <div className="mt-2 flex flex-wrap items-center gap-1 text-xs xl:mt-0">
                 {row.record ? (
                   <>
                     <AttendanceStatusBadge status={row.record.status} />
@@ -254,7 +258,7 @@ export function AttendanceSheet({ date, rows, canEdit }: { date: string; rows: S
                 )}
               </div>
               {rowErrors && (
-                <ul className="text-destructive mt-2 text-xs lg:col-span-full lg:mt-0">
+                <ul className="text-destructive mt-2 text-xs xl:col-span-full xl:mt-0">
                   {rowErrors.map((message) => (
                     <li key={message}>{message}</li>
                   ))}

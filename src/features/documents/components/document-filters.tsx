@@ -3,7 +3,7 @@ import { FilterSelect } from "@/components/list/filter-select";
 /** Filtros comunes del listado de documentos (se guardan en la URL). */
 export function DocumentFilters({ types }: { types: { id: string; name: string }[] }) {
   return (
-    <div className="grid grid-cols-2 gap-2 sm:flex">
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
       <FilterSelect
         name="documentTypeId"
         label="Tipo"

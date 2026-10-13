@@ -77,7 +77,7 @@ async function BalancesContent({ searchParams }: Pick<Props, "searchParams">) {
       <Card>
         <div className="flex flex-col gap-2 p-3 lg:flex-row lg:items-center">
           <SearchInput placeholder="Buscar por empleado o legajo" />
-          <div className="grid grid-cols-2 gap-2 sm:flex">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <FilterSelect
               name="year"
               label="Período"

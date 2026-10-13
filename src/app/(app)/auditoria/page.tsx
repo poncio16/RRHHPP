@@ -9,6 +9,7 @@ import { Pagination } from "@/components/list/pagination";
 import { SearchInput } from "@/components/list/search-input";
 import { Card } from "@/components/ui/card";
 import { AuditFilters } from "@/features/audit/components/audit-filters";
+import { entityLabel } from "@/features/audit/constants";
 import { AuditTable } from "@/features/audit/components/audit-table";
 import { getAuditFilterOptions, listAuditLog } from "@/features/audit/service";
 import { ExportButtons } from "@/features/reports/components/export-buttons";
@@ -64,7 +65,8 @@ async function Content({ searchParams }: Pick<Props, "searchParams">) {
           <AuditFilters modules={options.modules} users={options.users} />
           {(query.entidad || query.registro) && (
             <p className="text-muted-foreground text-sm">
-              Solo los eventos del registro {[query.entidad, query.registro].filter(Boolean).join(" ")}.{" "}
+              Solo los eventos del registro{" "}
+              {[query.entidad && entityLabel(query.entidad), query.registro].filter(Boolean).join(" ")}.{" "}
               <Link href={`/auditoria?${withoutEntity.toString()}`} className="text-primary hover:underline">
                 Ver todos
               </Link>

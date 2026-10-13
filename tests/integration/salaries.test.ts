@@ -318,6 +318,13 @@ describe("novedades manuales", () => {
     const { id } = await novelties.createNovelty(rrhh, refs.employee, manual({ amount: "10.000" }));
     expect(await novelties.approveNovelty(rrhh, id)).toEqual({ status: "Aprobada" });
     const item = (await novelties.listEmployeeNovelties(rrhh, refs.employee, {})).items.find((i) => i.id === id)!;
+    // Guardar sin cambios no la devuelve a pendiente ni deja un evento.
+    const events = await db.auditLog.count({ where: { entityId: id } });
+    expect(await novelties.updateNovelty(rrhh, id, { ...item.formValues, version: item.version })).toEqual({
+      status: "Aprobada",
+    });
+    expect((await db.novelty.findUniqueOrThrow({ where: { id } })).status).toBe("APROBADA");
+    expect(await db.auditLog.count({ where: { entityId: id } })).toBe(events);
     expect(
       await novelties.updateNovelty(rrhh, id, { ...item.formValues, amount: "12.000", version: item.version }),
     ).toEqual({

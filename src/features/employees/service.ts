@@ -366,12 +366,17 @@ function toRecord(data: EmployeeData) {
 
 type EmployeeRecord = ReturnType<typeof toRecord>;
 
-/** Campos del legajo que se guardan en la auditoría. */
+/**
+ * Campos del legajo que se guardan en la auditoría: sin el id (es el registro
+ * afectado) ni las relaciones incluidas, que ya están como `…Id`.
+ */
 function auditable(e: Partial<Record<string, unknown>>) {
-  const { createdAt, updatedAt, createdById, updatedById, version, ...rest } = e;
-  void [createdAt, updatedAt, createdById, updatedById, version];
+  const { id, createdAt, updatedAt, createdById, updatedById, version, ...rest } = e;
+  void [id, createdAt, updatedAt, createdById, updatedById, version];
   return Object.fromEntries(
-    Object.entries(rest).filter(([, v]) => typeof v !== "object" || v === null || v instanceof Date),
+    Object.entries(rest).filter(
+      ([key, v]) => v instanceof Date || typeof v !== "object" || (v === null && !(`${key}Id` in rest)),
+    ),
   );
 }
 
