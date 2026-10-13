@@ -117,6 +117,7 @@ const FILTER_REFS: Record<string, AuditRef> = {
   workplaceId: "workplace",
   establecimiento: "workplace",
   tipo: "noveltyType",
+  leaveTypeId: "leaveType",
   usuario: "user",
 };
 

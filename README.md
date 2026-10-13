@@ -227,6 +227,7 @@ En **Licencias y ausencias** (menú) se registran licencias, ausencias, vacacion
 - **Certificados**: si el tipo lo requiere, la lista marca "Falta certificado" hasta que se adjunta un documento desde el mismo registro. El filtro "Falta el certificado" muestra solo esas licencias.
 - **Suspendido**: no se guarda a mano; un empleado figura suspendido mientras tiene una suspensión aprobada que cubre el día de hoy (se ve en el legajo y como filtro en Empleados).
 - **Saldos de vacaciones**: uno por empleado y año. Los días se calculan con las reglas por antigüedad de Configuración → Vacaciones y los parámetros de Parámetros → Vacaciones (fecha de corte de la antigüedad y proporción cuando no se trabajó lo suficiente). "Generar períodos" muestra el cálculo antes de crear los que faltan; los existentes no cambian. Cada período admite un ajuste con motivo y días arrastrados. Las reglas y parámetros del seed son los valores de referencia de la LCT y deben validarse.
+- **Exportar**: con "Exportar listados y reportes", **Licencias y ausencias** y **Vacaciones** se descargan en Excel o CSV con los filtros y el orden de la pantalla (todas las páginas, hasta 10.000 filas): legajo, empleado, tipo, período de vacaciones, fechas, días, estado, momento, quién cargó y quién decidió, y observaciones. Sin permiso de datos de salud los tipos sensibles salen como "Licencia (dato reservado)" y sin observaciones. Los saldos por período se exportan desde Reportes → Vacaciones.
 - **Permisos**: "Ver licencias, ausencias y vacaciones" para consultar, "Registrar licencias, ausencias y vacaciones" para cargar, editar y anular solicitudes y generar o ajustar saldos, "Aprobar o rechazar solicitudes" para decidir y editar aprobadas, y "Ver datos de salud" para ver los tipos marcados como dato de salud (sin ese permiso se muestran como "Licencia (dato reservado)", sin observaciones ni acciones).
 
 Las licencias generan novedades si su tipo tiene configurado "Genera novedad" (ver Novedades). El ausentismo se ve en el Inicio y en Reportes → Ausentismo; las licencias que terminan y las vacaciones próximas o pendientes, en Alertas.
@@ -324,7 +325,7 @@ El **Inicio** muestra indicadores calculados en el momento con los datos cargado
 | Antigüedad                | Personal activo por rangos y el detalle, a una fecha. Los rangos se ajustan en Configuración → Parámetros → Rangos de antigüedad.                                  | Reporte de antigüedad                                |
 | Remuneraciones informadas | Bruto, descuentos y neto informados de un mes, por sector y por empleado, con el aviso "no constituye liquidación de haberes".                                     | Reporte de remuneraciones y Ver información salarial |
 
-- **Exportar**: con el permiso "Exportar listados y reportes", cada reporte se descarga en **Excel** (una hoja por tabla, con fechas y números reales) y cada tabla en **CSV**. También se exportan los listados de **Empleados** y **Novedades** con los filtros de la pantalla. DNI y CUIL salen solo con permiso de datos personales, y los datos de salud siguen reservados.
+- **Exportar**: con el permiso "Exportar listados y reportes", cada reporte se descarga en **Excel** (una hoja por tabla, con fechas y números reales) y cada tabla en **CSV**. También se exportan los listados de **Empleados**, **Licencias y ausencias**, **Vacaciones** y **Novedades** con los filtros de la pantalla. DNI y CUIL salen solo con permiso de datos personales, y los datos de salud siguen reservados.
 - **CSV**: separador punto y coma, coma decimal, fechas dd/mm/aaaa y codificación UTF-8 con BOM, para que Excel en español lo abra directo. Los textos que empiezan con `=`, `+`, `-` o `@` se exportan con un apóstrofo adelante para que no se tomen como fórmulas.
 - Cada exportación queda en la auditoría con el reporte, el formato, los filtros y la cantidad de filas. Los listados exportan hasta 10.000 filas.
 
@@ -374,7 +375,7 @@ Lo que el sistema **no** hace, a propósito o porque quedó fuera del alcance ac
 - La zona horaria es fija (`America/Argentina/Buenos_Aires`); todavía no se configura.
 - Una sola empresa por instalación; las sucursales se manejan como establecimientos.
 - No se borran registros del personal: legajos, documentos, licencias, novedades y egresos se dan de baja o se anulan con un motivo y quedan en el historial. Lo que sí se puede borrar es configuración, como un feriado mal cargado, y queda en la auditoría.
-- Se exportan los reportes y los listados de Empleados, Novedades y Auditoría; los demás listados no se exportan todavía.
+- Se exportan los reportes y los listados de Empleados, Licencias y ausencias, Vacaciones, Novedades y Auditoría; los demás listados no se exportan todavía.
 - La importación solo da de alta legajos nuevos: no actualiza legajos existentes ni importa otros datos.
 - Sin modo oscuro.
 

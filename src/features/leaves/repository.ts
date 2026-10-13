@@ -69,10 +69,9 @@ export function missingCertificateWhere(includeSensitive: boolean): Prisma.Leave
   };
 }
 
-export async function listLeaves(
-  query: LeaveListQuery,
-  scope: { employeeId?: string; onlyClass?: LeaveClass; includeSensitive: boolean; today: Date },
-) {
+type LeaveListScope = { employeeId?: string; onlyClass?: LeaveClass; includeSensitive: boolean; today: Date };
+
+async function leaveListWhere(query: LeaveListQuery, scope: LeaveListScope): Promise<Prisma.LeaveRecordWhereInput> {
   const and: Prisma.LeaveRecordWhereInput[] = [STATUS_WHERE[query.status]];
   if (scope.employeeId) and.push({ employeeId: scope.employeeId });
   const leaveClass = scope.onlyClass ?? (query.class ? CLASS_FILTER[query.class] : undefined);
@@ -94,26 +93,40 @@ export async function listLeaves(
   if (query.timing === "finalizadas") and.push({ endDate: { lt: scope.today } });
   if (query.desde) and.push({ endDate: { gte: parseIsoDate(query.desde)! } });
   if (query.hasta) and.push({ startDate: { lte: parseIsoDate(query.hasta)! } });
+  return { AND: and };
+}
 
-  const orderBy: Prisma.LeaveRecordOrderByWithRelationInput[] =
-    query.sort === "empleado"
-      ? [{ employee: { lastName: "asc" } }, { employee: { firstName: "asc" } }, { startDate: "desc" }]
-      : query.sort === "inicio"
-        ? [{ startDate: "asc" }, { createdAt: "asc" }]
-        : [{ startDate: "desc" }, { createdAt: "desc" }];
+function leaveListOrder(query: LeaveListQuery): Prisma.LeaveRecordOrderByWithRelationInput[] {
+  return query.sort === "empleado"
+    ? [{ employee: { lastName: "asc" } }, { employee: { firstName: "asc" } }, { startDate: "desc" }]
+    : query.sort === "inicio"
+      ? [{ startDate: "asc" }, { createdAt: "asc" }]
+      : [{ startDate: "desc" }, { createdAt: "desc" }];
+}
 
-  const where = { AND: and };
+export async function listLeaves(query: LeaveListQuery, scope: LeaveListScope) {
+  const where = await leaveListWhere(query, scope);
   const [items, total] = await Promise.all([
     db.leaveRecord.findMany({
       where,
       include: leaveInclude,
-      orderBy,
+      orderBy: leaveListOrder(query),
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
     }),
     db.leaveRecord.count({ where }),
   ]);
   return { items, total };
+}
+
+/** Mismos registros y orden que el listado, sin paginar, hasta `limit` filas. */
+export async function listLeavesForExport(query: LeaveListQuery, scope: LeaveListScope, limit: number) {
+  return db.leaveRecord.findMany({
+    where: await leaveListWhere(query, scope),
+    include: leaveInclude,
+    orderBy: leaveListOrder(query),
+    take: limit,
+  });
 }
 
 export async function findLeave(id: string, client: Client = db) {

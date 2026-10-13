@@ -12,7 +12,9 @@ import { LeaveFilters } from "@/features/leaves/components/leave-filters";
 import { LeavesTable } from "@/features/leaves/components/leaves-table";
 import { loadLeaveFormData } from "@/features/leaves/page-data";
 import { getEmployeeOptions, listLeaves } from "@/features/leaves/service";
+import { ExportButtons } from "@/features/reports/components/export-buttons";
 import { flattenSearchParams } from "@/lib/list/query";
+import { hasPermission } from "@/server/authz";
 import { requirePageAccess } from "@/server/auth/request";
 
 export const metadata: Metadata = { title: "Licencias y ausencias" };
@@ -52,9 +54,17 @@ async function LeavesContent({ searchParams }: Pick<Props, "searchParams">) {
         title="Licencias y ausencias"
         description="Licencias, ausencias, vacaciones y suspensiones de todo el personal, con su aprobación."
         actions={
-          form.edit && (
-            <LeaveDialog employeeId={null} employees={employees} types={form.edit.types} canApprove={form.canApprove} />
-          )
+          <>
+            {hasPermission(ctx, "export:run") && <ExportButtons resource="licencias" params={params} />}
+            {form.edit && (
+              <LeaveDialog
+                employeeId={null}
+                employees={employees}
+                types={form.edit.types}
+                canApprove={form.canApprove}
+              />
+            )}
+          </>
         }
       />
       <Card>
