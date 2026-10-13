@@ -191,12 +191,19 @@ export const SETTING_DEFINITIONS = {
         unit: "días",
         hint: "Entre 0 y 180. 0 desactiva el aviso.",
       },
+      {
+        name: "nextYearHolidaysDays",
+        label: "Feriados del año siguiente sin cargar",
+        unit: "días antes del 1 de enero",
+        hint: "Entre 0 y 120. Se avisa en el inicio a quien carga los feriados. 0 desactiva el aviso.",
+      },
     ] satisfies SettingFieldMeta[],
     schema: z.object({
       leaveEndingDays: z.number().int().min(0).max(90).default(7),
       vacationStartingDays: z.number().int().min(0).max(90).default(15),
       birthdayDays: z.number().int().min(0).max(60).default(15),
       contractEndingDays: z.number().int().min(0).max(180).default(30),
+      nextYearHolidaysDays: z.number().int().min(0).max(120).default(30),
     }),
   },
   seniority: {
