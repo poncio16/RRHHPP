@@ -374,6 +374,24 @@ describe("planilla diaria", () => {
     expect((await lastAudit({ entityId: beto.id }))?.message).not.toContain("completada con el horario");
     const carla = await stored(refs.late, date);
     expect((await lastAudit({ entityId: carla.id }))?.message).not.toContain("completada con el horario");
+
+    // Se completó y después se corrigió la salida (horas adicionales).
+    await attendance.saveSheet(rrhh, {
+      date: "2025-03-25",
+      rows: [
+        {
+          employeeId: refs.employee,
+          version: null,
+          checkIn: "09:00",
+          checkOut: "20:30",
+          breakMinutes: "60",
+          fromSchedule: true,
+        },
+      ],
+    });
+    const later = await stored(refs.employee, "2025-03-25");
+    expect(later.extraMinutes).toBe(150);
+    expect((await lastAudit({ entityId: later.id }))?.message).not.toContain("completada con el horario");
   });
 });
 

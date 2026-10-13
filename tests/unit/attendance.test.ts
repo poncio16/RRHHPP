@@ -185,6 +185,10 @@ describe("completar con el horario", () => {
       row("sin-horario", { scheduled: null }),
       row("noche", { scheduled: night }),
       row("franco-sin-horario", { scheduled: null, open: false }),
+      // Guardadas o escritas no cuentan como pendientes ni como sin horario, aunque su turno no haya terminado.
+      row("guardada-noche", { open: false, scheduled: night }),
+      row("escrita-noche", { touched: true, scheduled: night }),
+      row("escrita-sin-horario", { touched: true, scheduled: null }),
     ];
     expect(scheduleFill(rows, new Date("2025-03-03T22:00:00Z"))).toEqual({
       fill: ["vacia"],
@@ -206,6 +210,7 @@ describe("completar con el horario", () => {
     expect(matchesSchedule(plan, { checkIn: "09:00", checkOut: "18:00", breakMinutes: null })).toBe(true);
     expect(matchesSchedule(plan, { checkIn: "09:00", checkOut: "18:00", breakMinutes: 30 })).toBe(false);
     expect(matchesSchedule(plan, { checkIn: "09:05", checkOut: "18:00", breakMinutes: 60 })).toBe(false);
+    expect(matchesSchedule(plan, { checkIn: "09:00", checkOut: "20:30", breakMinutes: 60 })).toBe(false);
     expect(matchesSchedule({ kind: "habil" }, { checkIn: "09:00", checkOut: "18:00", breakMinutes: 60 })).toBe(false);
   });
 
