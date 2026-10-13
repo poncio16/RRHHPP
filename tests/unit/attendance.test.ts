@@ -4,8 +4,12 @@ import {
   attendanceStatus,
   dayPlan,
   formatMinutes,
+  matchesSchedule,
+  scheduledTimes,
+  scheduleFill,
   shiftInstants,
   type AttendanceParams,
+  type FillCandidate,
   type ScheduleSlot,
 } from "@/features/attendance/calc";
 import { attendanceDaySchema, attendanceSheetSchema } from "@/features/attendance/schemas";
@@ -147,5 +151,80 @@ describe("esquemas", () => {
       ],
     });
     expect(repeated.error?.issues[0]?.message).toMatch(/más de una vez/);
+  });
+});
+
+describe("completar con el horario", () => {
+  const slot = OFFICE[0]!;
+  const scheduled = scheduledTimes(MONDAY, slot);
+  const row = (id: string, extra: Partial<FillCandidate> = {}): FillCandidate => ({
+    id,
+    scheduled,
+    open: true,
+    touched: false,
+    ...extra,
+  });
+
+  it("toma entrada, salida y descanso del turno; la salida es un instante en la zona de la empresa", () => {
+    expect(scheduled).toEqual({
+      checkIn: "09:00",
+      checkOut: "18:00",
+      breakMinutes: 60,
+      endsAt: "2025-03-03T21:00:00.000Z",
+    });
+    const night = scheduledTimes(MONDAY, { dayOfWeek: 1, startTime: "22:00", endTime: "06:00", breakMinutes: 30 });
+    expect(night.endsAt).toBe("2025-03-04T09:00:00.000Z");
+  });
+
+  it("llena solo filas abiertas, vacías y con el turno terminado, y cuenta las demás", () => {
+    const night = scheduledTimes(MONDAY, { dayOfWeek: 1, startTime: "22:00", endTime: "06:00", breakMinutes: 30 });
+    const rows = [
+      row("vacia"),
+      row("escrita", { touched: true }),
+      row("guardada-o-con-licencia", { open: false }),
+      row("sin-horario", { scheduled: null }),
+      row("noche", { scheduled: night }),
+      row("franco-sin-horario", { scheduled: null, open: false }),
+      // Guardadas o escritas no cuentan como pendientes ni como sin horario, aunque su turno no haya terminado.
+      row("guardada-noche", { open: false, scheduled: night }),
+      row("escrita-noche", { touched: true, scheduled: night }),
+      row("escrita-sin-horario", { touched: true, scheduled: null }),
+    ];
+    expect(scheduleFill(rows, new Date("2025-03-03T22:00:00Z"))).toEqual({
+      fill: ["vacia"],
+      notFinished: 1,
+      withoutSchedule: 1,
+    });
+    // A las 17:59 todavía no terminó ningún turno.
+    expect(scheduleFill([row("vacia")], new Date("2025-03-03T20:59:00Z"))).toEqual({
+      fill: [],
+      notFinished: 1,
+      withoutSchedule: 0,
+    });
+    expect(scheduleFill([row("vacia")], new Date("2025-03-03T21:00:00Z")).fill).toEqual(["vacia"]);
+  });
+
+  it("reconoce lo guardado igual al turno; el descanso vacío es el del horario", () => {
+    const plan = dayPlan(MONDAY, OFFICE, MON_FRI, null);
+    expect(matchesSchedule(plan, { checkIn: "09:00", checkOut: "18:00", breakMinutes: 60 })).toBe(true);
+    expect(matchesSchedule(plan, { checkIn: "09:00", checkOut: "18:00", breakMinutes: null })).toBe(true);
+    expect(matchesSchedule(plan, { checkIn: "09:00", checkOut: "18:00", breakMinutes: 30 })).toBe(false);
+    expect(matchesSchedule(plan, { checkIn: "09:05", checkOut: "18:00", breakMinutes: 60 })).toBe(false);
+    expect(matchesSchedule(plan, { checkIn: "09:00", checkOut: "20:30", breakMinutes: 60 })).toBe(false);
+    expect(matchesSchedule({ kind: "habil" }, { checkIn: "09:00", checkOut: "18:00", breakMinutes: 60 })).toBe(false);
+  });
+
+  it("la planilla acepta la marca y por defecto no la pone", () => {
+    const base = {
+      employeeId: "0190a0a0-0000-7000-8000-000000000001",
+      version: null,
+      checkIn: "09:00",
+      checkOut: "18:00",
+    };
+    expect(attendanceSheetSchema.parse({ date: "2025-03-03", rows: [base] }).rows[0]?.fromSchedule).toBe(false);
+    expect(
+      attendanceSheetSchema.parse({ date: "2025-03-03", rows: [{ ...base, fromSchedule: true }] }).rows[0]
+        ?.fromSchedule,
+    ).toBe(true);
   });
 });

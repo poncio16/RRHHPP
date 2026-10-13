@@ -316,6 +316,83 @@ describe("planilla diaria", () => {
     expect((await stored(refs.other, "2025-03-17")).status).toBe("AUSENTE");
     expect(await stored(refs.late, "2025-03-17")).toMatchObject({ lateMinutes: 20, workedMinutes: 490 });
   });
+
+  it("trae el turno del horario para completar, salvo licencia, franco o feriado", async () => {
+    const monday = await attendance.getSheet(rrhh, { fecha: "2025-03-10", sector: refs.department });
+    expect(monday.rows[0]?.scheduled).toEqual({
+      checkIn: "09:00",
+      checkOut: "18:00",
+      breakMinutes: 60,
+      endsAt: "2025-03-10T21:00:00.000Z",
+    });
+    // Beto tiene licencia ese día.
+    expect(monday.rows[1]?.scheduled).toBeNull();
+    for (const fecha of [SATURDAY, HOLIDAY]) {
+      const sheet = await attendance.getSheet(rrhh, { fecha, sector: refs.department });
+      expect(sheet.rows.map((r) => r.scheduled)).toEqual([null, null, null]);
+    }
+  });
+
+  it("lo completado con el horario queda en la auditoría solo si se guarda igual al turno", async () => {
+    const date = "2025-03-24";
+    const result = await attendance.saveSheet(rrhh, {
+      date,
+      rows: [
+        {
+          employeeId: refs.employee,
+          version: null,
+          checkIn: "09:00",
+          checkOut: "18:00",
+          breakMinutes: "60",
+          fromSchedule: true,
+        },
+        // Se corrigió la entrada después de completar: ya no es el turno.
+        {
+          employeeId: refs.other,
+          version: null,
+          checkIn: "09:20",
+          checkOut: "18:00",
+          breakMinutes: "60",
+          fromSchedule: true,
+        },
+        // Igual al turno pero escrito a mano.
+        { employeeId: refs.late, version: null, checkIn: "09:00", checkOut: "18:00", breakMinutes: "" },
+      ],
+    });
+    expect(result.saved).toBe(3);
+    const ana = await stored(refs.employee, date);
+    expect(ana).toMatchObject({
+      status: "PRESENTE",
+      workedMinutes: 480,
+      extraMinutes: 0,
+      lateMinutes: 0,
+      source: "MANUAL",
+    });
+    expect((await lastAudit({ entityId: ana.id }))?.message).toMatch(/: presente \(completada con el horario\)$/);
+    const beto = await stored(refs.other, date);
+    expect(beto.lateMinutes).toBe(20);
+    expect((await lastAudit({ entityId: beto.id }))?.message).not.toContain("completada con el horario");
+    const carla = await stored(refs.late, date);
+    expect((await lastAudit({ entityId: carla.id }))?.message).not.toContain("completada con el horario");
+
+    // Se completó y después se corrigió la salida (horas adicionales).
+    await attendance.saveSheet(rrhh, {
+      date: "2025-03-25",
+      rows: [
+        {
+          employeeId: refs.employee,
+          version: null,
+          checkIn: "09:00",
+          checkOut: "20:30",
+          breakMinutes: "60",
+          fromSchedule: true,
+        },
+      ],
+    });
+    const later = await stored(refs.employee, "2025-03-25");
+    expect(later.extraMinutes).toBe(150);
+    expect((await lastAudit({ entityId: later.id }))?.message).not.toContain("completada con el horario");
+  });
 });
 
 describe("consulta y permisos", () => {

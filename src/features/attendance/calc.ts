@@ -103,6 +103,59 @@ export function attendanceMinutes(params: AttendanceParams): AttendanceMinutes {
   return { worked, regular: Math.min(worked, expected), extra, late };
 }
 
+/** Entrada, salida y descanso que prevé el horario ese día; `endsAt` es el instante de la salida. */
+export type ScheduledTimes = { checkIn: string; checkOut: string; breakMinutes: number; endsAt: string };
+
+export function scheduledTimes(date: Date, slot: ScheduleSlot, timeZone?: string): ScheduledTimes {
+  return {
+    checkIn: slot.startTime,
+    checkOut: slot.endTime,
+    breakMinutes: slot.breakMinutes,
+    endsAt: shiftInstants(date, slot.startTime, slot.endTime, timeZone).checkOut.toISOString(),
+  };
+}
+
+/** Lo cargado es exactamente el turno del horario (un descanso vacío toma el del horario). */
+export function matchesSchedule(
+  plan: DayPlan,
+  fields: { checkIn: string | null; checkOut: string | null; breakMinutes: number | null },
+): boolean {
+  return (
+    plan.kind === "turno" &&
+    fields.checkIn === plan.slot.startTime &&
+    fields.checkOut === plan.slot.endTime &&
+    (fields.breakMinutes ?? plan.slot.breakMinutes) === plan.slot.breakMinutes
+  );
+}
+
+export type FillCandidate = {
+  id: string;
+  scheduled: ScheduledTimes | null;
+  /** Día hábil sin licencia y sin asistencia guardada. */
+  open: boolean;
+  /** Ya tiene algo escrito en la planilla (horas o ausente). */
+  touched: boolean;
+};
+
+/**
+ * Filas que llena "Completar con el horario": días del horario sin licencia,
+ * sin asistencia guardada ni nada escrito, cuyo turno ya terminó. Las que no
+ * tienen horario asignado o cuyo turno todavía no terminó se cuentan para
+ * avisarlo; nunca se pisa lo guardado ni lo escrito.
+ */
+export function scheduleFill(rows: FillCandidate[], now: Date) {
+  const fill: string[] = [];
+  let notFinished = 0;
+  let withoutSchedule = 0;
+  for (const row of rows) {
+    if (!row.open || row.touched) continue;
+    if (!row.scheduled) withoutSchedule++;
+    else if (new Date(row.scheduled.endsAt) > now) notFinished++;
+    else fill.push(row.id);
+  }
+  return { fill, notFinished, withoutSchedule };
+}
+
 /** 450 → "7:30". */
 export function formatMinutes(minutes: number): string {
   const sign = minutes < 0 ? "-" : "";
