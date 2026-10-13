@@ -199,6 +199,7 @@ En **Empleados** está el listado de legajos con búsqueda (nombre y apellido si
 - **Alta y edición**: datos personales, de contacto y laborales. El número de legajo se asigna solo si se deja vacío. DNI, CUIL y CBU se validan con su dígito verificador; si el CUIL no corresponde al DNI se muestra un aviso, pero no se bloquea (hay casos reales en que no coinciden).
 - **Historial laboral**: los cambios de puesto, sector, categoría, convenio, contratación, jornada, horario, modalidad, establecimiento y superior directo piden una fecha de vigencia (no futura) y quedan en el historial con quién los registró.
 - **Datos bancarios**: la cuenta sueldo se carga aparte; el banco se reconoce por el CBU y los cambios quedan en el historial con el CBU enmascarado.
+- **Foto**: se toca el círculo del encabezado del legajo para sacarla con la cámara del celular o elegir una imagen JPG o PNG; el navegador la achica antes de subirla. La ve cualquiera que pueda abrir el legajo y la cambia quien tiene "Crear y modificar legajos". Las fotos anteriores no se borran y cada cambio queda en la auditoría.
 - **Alcance por permisos**: sin "Ver datos personales" el servidor no envía DNI, CUIL, domicilio ni nacimiento, y no se puede buscar por documento; sin "Ver datos bancarios" no se ven la pestaña ni los cambios bancarios del historial. Para crear o editar legajos hacen falta "Crear y modificar legajos" y "Ver datos personales".
 - Si dos personas editan el mismo legajo a la vez, la segunda en guardar recibe un aviso para recargar en lugar de pisar los cambios.
 
