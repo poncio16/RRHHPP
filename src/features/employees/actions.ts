@@ -23,3 +23,17 @@ export async function saveBankAccountAction(employeeId: string, input: unknown) 
     service.saveBankAccount(await requireActionContext("employee:write", MODULE), id.parse(employeeId), input),
   );
 }
+
+export async function setEmployeePhotoAction(employeeId: string, form: FormData) {
+  return runAction(async () => {
+    const ctx = await requireActionContext("employee:write", MODULE);
+    const file = form.get("file");
+    return service.setEmployeePhoto(ctx, id.parse(employeeId), file instanceof File ? file : null);
+  });
+}
+
+export async function removeEmployeePhotoAction(employeeId: string) {
+  return runAction(async () =>
+    service.removeEmployeePhoto(await requireActionContext("employee:write", MODULE), id.parse(employeeId)),
+  );
+}

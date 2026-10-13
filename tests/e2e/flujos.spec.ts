@@ -1,9 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /*
- * Flujos de humo: login, alta de un legajo, licencia, egreso y su rastro en
- * la auditoría. Cada corrida usa datos nuevos (DNI al azar) y no depende de
- * lo que ya haya en la base, salvo los catálogos del seed.
+ * Flujos de humo: login, alta de un legajo con su foto, licencia, egreso y
+ * su rastro en la auditoría. Cada corrida usa datos nuevos (DNI al azar) y no
+ * depende de lo que ya haya en la base, salvo los catálogos del seed.
  */
 
 /** DNI al azar y su CUIL válido (prefijo 20). */
@@ -20,6 +20,9 @@ function randomPerson() {
 
 /** Hoy en Argentina, como AAAA-MM-DD. */
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
+
+/** Imagen PNG de 1 × 1 píxel. */
+const PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 async function noHorizontalScroll(page: Page) {
   return page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
@@ -40,6 +43,7 @@ test.describe("sin sesión", () => {
 
   test("las rutas de datos piden sesión y las respuestas llevan cabeceras de seguridad", async ({ request }) => {
     expect((await request.get("/api/exportar/empleados")).status()).toBe(401);
+    expect((await request.get("/api/empleados/00000000-0000-7000-8000-000000000000/foto")).status()).toBe(401);
     const headers = (await request.get("/login")).headers();
     expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'");
     expect(headers["content-security-policy"]).toContain("object-src 'none'");
@@ -78,6 +82,40 @@ test.describe.serial("ciclo de un legajo", () => {
     await page.waitForURL(/\/empleados\/[0-9a-f-]{36}$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(`${lastName}, ${firstName}`);
     employeeUrl = new URL(page.url()).pathname;
+  });
+
+  test("foto del legajo desde el celular", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(employeeUrl);
+    await page.getByRole("button", { name: "Cargar una foto" }).click();
+    const dialog = page.getByRole("dialog");
+    // "Sacar foto" abre la cámara del celular; acá se le pasa la imagen a ese mismo campo.
+    await dialog.locator("input[capture]").setInputFiles({
+      name: "foto.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(PNG_1X1, "base64"),
+    });
+    await dialog.getByRole("button", { name: "Guardar foto" }).click();
+    await expect(dialog).toBeHidden();
+    const photo = page.locator(`img[alt="Foto de ${firstName} ${lastName}"]`);
+    await expect(photo).toBeVisible();
+    await expect.poll(() => photo.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+    await expect(page.getByRole("button", { name: "Cambiar la foto" })).toBeVisible();
+    expect(await noHorizontalScroll(page)).toBe(true);
+
+    // Se sirve como imagen (siempre JPEG, achicada en el navegador) y se revalida con el ETag.
+    const url = new URL((await photo.getAttribute("src"))!, page.url()).href;
+    const response = await page.request.get(url);
+    expect(response.status()).toBe(200);
+    expect(response.headers()).toMatchObject({
+      "content-type": "image/jpeg",
+      "x-content-type-options": "nosniff",
+      "cache-control": "private, no-cache",
+    });
+    const etag = response.headers()["etag"]!;
+    expect((await page.request.get(url, { headers: { "If-None-Match": etag } })).status()).toBe(304);
+    expect((await page.request.get(url, { headers: { "If-None-Match": `W/${etag}` } })).status()).toBe(304);
+    expect((await page.request.get(url, { headers: { "If-None-Match": '"otra"' } })).status()).toBe(200);
   });
 
   test("el DNI repetido se rechaza", async ({ page }) => {

@@ -27,6 +27,7 @@ describe("zona horaria", () => {
   it("una hora local de Buenos Aires es tres horas más en UTC", () => {
     expect(zonedInstant(MONDAY, 9 * 60).toISOString()).toBe("2025-03-03T12:00:00.000Z");
     expect(formatTime(new Date("2025-03-03T12:00:00Z"))).toBe("09:00");
+    expect(formatTime(new Date("2025-03-03T12:00:05Z"), undefined, { seconds: true })).toBe("09:00:05");
   });
 
   it("una salida anterior a la entrada es del día siguiente", () => {

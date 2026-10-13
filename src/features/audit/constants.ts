@@ -214,6 +214,7 @@ export const FIELD_LABELS: Record<string, string> = {
   leaveRecordId: "Licencia o ausencia",
   fileName: "Archivo",
   fileId: "Archivo",
+  photoFileId: "Foto",
   sensitive: "Documentación sensible",
   recurso: "Recurso",
   formato: "Formato",

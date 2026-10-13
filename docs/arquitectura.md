@@ -267,6 +267,7 @@ erDiagram
   Employee ||--o{ Document : documentos
   Document }o--|| DocumentType : tipo
   Document }o--o| StoredFile : archivo
+  Employee }o--o| StoredFile : foto
   Employee ||--o{ Novelty : novedades
   Novelty }o--|| NoveltyType : tipo
   Employee ||--o{ EmployeeExit : egresos
@@ -325,6 +326,7 @@ Todas con `is_active`, `sort_order`, timestamps.
 - Identificación: `id`, `file_number` (legajo) U, `last_name`, `first_name`, `dni` U, `cuil` U, `birth_date`, `nationality_id?` FK LookupValue, `marital_status_id?` FK, `sex` (enum `F`/`M`/`X`, según DNI).
 - Contacto: `address_line`, `city`, `province_id` FK, `postal_code`, `phone?`, `email?`, `emergency_contact_name?`, `emergency_contact_phone?`.
 - Laborales: `hire_date`, `seniority_date` (antigüedad reconocida, inicia igual a `hire_date`), `contract_end_date?`, `exit_date?`, `status` (enum `ACTIVO`/`EGRESADO`), `department_id`, `position_id`, `category_id?`, `contract_type_id`, `workday_type_id?`, `work_schedule_id?`, `work_modality_id?`, `agreement_id?`, `health_insurer_id?`, `art_provider_id?`, `workplace_id`, `supervisor_id?` FK Employee.
+- Foto: `photo_file_id?` FK StoredFile (la foto actual; las anteriores quedan guardadas).
 - Control: `version` (bloqueo optimista), auditoría de usuario/fechas.
 - Índices: `status`, `department_id`, `position_id`, `workplace_id`, `hire_date`; índice trigram sobre `unaccent(last_name || ' ' || first_name)` para búsqueda; `dni`, `cuil`, `file_number` ya únicos.
 - CHECK: `exit_date IS NULL OR exit_date >= hire_date`.
@@ -426,7 +428,7 @@ Mensajes en español mediante un mapa de errores de Zod global.
 
 - **Layout**: sidebar colapsable con módulos agrupados (Personal, Tiempo, Remuneraciones, Reportes, Configuración), barra superior con búsqueda global (empleados por nombre, DNI, CUIL o legajo), campana de alertas y menú de usuario.
 - **Listados**: un único componente `DataTable` con búsqueda, filtros, orden, paginación en servidor, contador de registros, estado vacío, esqueleto de carga y error. Los filtros viven en la URL (se pueden compartir y sobreviven a recargar).
-- **Legajo**: página con encabezado (foto no, datos clave, estado con badge) y pestañas: Datos personales, Laborales, Contacto, Bancarios, Documentación, Licencias y vacaciones, Asistencia, Remuneraciones, Novedades, Historial. Cada pestaña se muestra solo si el usuario tiene permiso.
+- **Legajo**: página con encabezado (foto, datos clave, estado con badge) y pestañas: Datos personales, Laborales, Contacto, Bancarios, Documentación, Licencias y vacaciones, Asistencia, Remuneraciones, Novedades, Historial. Cada pestaña se muestra solo si el usuario tiene permiso.
 - **Formularios**: secciones, selects con búsqueda para catálogos, date picker con formato DD/MM/AAAA, importes con formato `$ 1.234.567,89`, validación al salir del campo, aviso al abandonar con cambios sin guardar, confirmación en operaciones críticas (egreso, anulaciones, borrado físico, cambios de permisos).
 - **Drawers** para altas rápidas (licencia, novedad, documento) sin salir del legajo.
 - **Responsive**: escritorio primero; en tablet y móvil el sidebar pasa a menú, las tablas priorizan columnas clave y el resto se ve en el detalle.
@@ -685,3 +687,4 @@ Registro de ajustes respecto del diseño original, con su motivo.
 | 16   | No hay borrado físico de datos de personal (la sección 4.5 lo preveía "restringido"): legajos, documentos, licencias, novedades y egresos se anulan o se dan de baja con motivo. Solo se borran un feriado, o filas que se reemplazan dentro de un cambio auditado: días de un horario, reglas de vacaciones, permisos de un rol, renglones de un resumen informado y el descarte de una alerta que vuelve a pendientes.                                                               | La especificación pide no eliminar información histórica; no hizo falta un caso con razón técnica o legal.                                                                      |
 | 16   | TanStack Table y Recharts no se usan: los listados se arman en el servidor con `components/list/*` (paginación, orden y filtros en la URL) y los gráficos son barras con CSS.                                                                                                                                                                                                                                                                                                          | Los listados ya filtraban y paginaban en el servidor; las barras cubren los indicadores sin otra dependencia.                                                                   |
 | 16   | Se quitó del menú el aviso "Se habilita en la Fase N".                                                                                                                                                                                                                                                                                                                                                                                                                                 | Todos los módulos de la versión 1 están entregados.                                                                                                                             |
+| V1+  | Foto en el legajo, pedida después de V1 (la sección 6 decía "foto no"). Se saca con la cámara del celular en la misma aplicación web (`<input capture>`) o se elige una imagen; el navegador la achica a 1024 px en JPEG. La ve quien abre el legajo (`employee:read`, también Consulta) y la cambia quien tiene `employee:write`. Se sirve por `/api/empleados/[id]/foto`, que verifica la sesión. Cambiarla o quitarla no borra el archivo anterior y queda en la auditoría.         | Pedido de Poncio: la foto no es un dato reservado. Se conserva el historial. No sube la versión del legajo para no cortar una edición abierta.                                  |
