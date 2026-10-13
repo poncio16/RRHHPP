@@ -35,6 +35,7 @@ export async function loadEmployeePage(params: Promise<{ id: string }>) {
     suspension,
     pendingExit,
     canEdit: hasPermission(ctx, "employee:write") && hasPermission(ctx, "employee.personal:read"),
+    canChangePhoto: hasPermission(ctx, "employee:write"),
     canSeeBank: hasPermission(ctx, "employee.bank:read"),
     canSeeDocuments: hasPermission(ctx, "document:read"),
     canSeeLeaves: hasPermission(ctx, "leave:read"),

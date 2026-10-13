@@ -5,6 +5,7 @@ import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { env } from "../env";
+import { logger } from "../logger";
 
 /**
  * Almacenamiento de archivos. V1 usa disco local (`STORAGE_DIR`, un volumen
@@ -57,4 +58,24 @@ let driver: StorageDriver | undefined;
 export function storage(): StorageDriver {
   driver ??= localDriver(path.resolve(env.STORAGE_DIR));
   return driver;
+}
+
+/**
+ * Guarda el archivo y ejecuta `persist`; si la base falla, descarta el archivo
+ * recién escrito (nunca quedó asociado a un registro).
+ */
+export async function withStoredFile<T>(
+  file: { key: string; bytes: Uint8Array } | null,
+  persist: () => Promise<T>,
+): Promise<T> {
+  if (!file) return persist();
+  await storage().put(file.key, file.bytes);
+  try {
+    return await persist();
+  } catch (error) {
+    await storage()
+      .discard(file.key)
+      .catch((e: unknown) => logger.error({ err: e, key: file.key }, "No se pudo descartar un archivo huérfano"));
+    throw error;
+  }
 }

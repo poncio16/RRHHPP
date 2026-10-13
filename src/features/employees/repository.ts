@@ -190,6 +190,42 @@ export async function touchEmployee(id: string, actorId: string, tx: Prisma.Tran
   await tx.employee.update({ where: { id }, data: { version: { increment: 1 }, updatedById: actorId } });
 }
 
+/* Foto del legajo */
+
+export async function findPhoto(employeeId: string) {
+  const employee = await db.employee.findUnique({
+    where: { id: employeeId },
+    select: { photo: { select: { id: true, storageKey: true, mimeType: true, originalName: true } } },
+  });
+  return employee?.photo ?? null;
+}
+
+/** Legajo con su foto actual, bloqueado hasta el fin de la transacción: dos cambios a la vez quedan en orden. */
+export async function lockForPhoto(employeeId: string, tx: Prisma.TransactionClient) {
+  await tx.$queryRaw`SELECT id FROM employee WHERE id = ${employeeId}::uuid FOR UPDATE`;
+  return tx.employee.findUnique({
+    where: { id: employeeId },
+    select: { fileNumber: true, lastName: true, firstName: true, photoFileId: true },
+  });
+}
+
+export async function createStoredFile(data: Prisma.StoredFileUncheckedCreateInput, tx: Prisma.TransactionClient) {
+  return tx.storedFile.create({ data, select: { id: true, originalName: true } });
+}
+
+/**
+ * Cambia la foto sin subir la versión del legajo: no es un cambio del
+ * formulario y no tiene que invalidar una edición abierta.
+ */
+export async function setPhoto(
+  employeeId: string,
+  photoFileId: string | null,
+  actorId: string,
+  tx: Prisma.TransactionClient,
+) {
+  await tx.employee.update({ where: { id: employeeId }, data: { photoFileId, updatedById: actorId } });
+}
+
 export async function upsertBankAccount(
   employeeId: string,
   data: { bankId: string; cbu: string; alias: string | null; accountTypeId: string },

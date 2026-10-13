@@ -1,7 +1,11 @@
+import { access, readdir } from "node:fs/promises";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { getAuditEntry } from "@/features/audit/service";
 import * as employees from "@/features/employees/service";
 import { toIsoDate, todayInTimeZone } from "@/lib/format";
 import type { ActorContext } from "@/server/context";
+import { ADMIN_ROLE } from "@/server/authz";
 import { db } from "@/server/db";
 import { ConflictError, ForbiddenError, NotFoundError, toAppError, ValidationError } from "@/server/errors";
 import { actorFor, createTestUser, lastAudit } from "./helpers";
@@ -295,5 +299,113 @@ describe("datos bancarios", () => {
     await expect(employees.getEmployee(rrhh, "00000000-0000-7000-8000-000000000000")).rejects.toBeInstanceOf(
       NotFoundError,
     );
+  });
+});
+
+describe("foto del legajo", () => {
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+  const PDF = new TextEncoder().encode("%PDF-1.4\n%%EOF\n");
+  const image = (bytes: Uint8Array, name = "foto.jpg", type = "image/jpeg") =>
+    new File([bytes as Uint8Array<ArrayBuffer>], name, { type });
+  const readAll = async (stream: ReadableStream<Uint8Array>) =>
+    new Uint8Array(await new Response(stream).arrayBuffer());
+  const photoOf = async (id: string) =>
+    db.employee.findUniqueOrThrow({ where: { id }, select: { version: true, photoFileId: true, photo: true } });
+
+  it("quien edita legajos la carga, Consulta la ve y el cambio queda en la auditoría", async () => {
+    const { id } = await employees.createEmployee(rrhh, validInput());
+    const before = await photoOf(id);
+    await employees.setEmployeePhoto(rrhh, id, image(JPEG));
+
+    const after = await photoOf(id);
+    expect(after.version).toBe(before.version);
+    expect(after.photo).toMatchObject({
+      mimeType: "image/jpeg",
+      sizeBytes: JPEG.length,
+      originalName: expect.stringMatching(/^foto-legajo-\d+-\d{4}-\d{2}-\d{2}-\d{6}\.jpg$/),
+    });
+    expect((await employees.getEmployee(consulta, id)).photoUrl).toBe(
+      `/api/empleados/${id}/foto?v=${after.photoFileId}`,
+    );
+
+    const photo = await employees.openEmployeePhoto(consulta, id, null);
+    expect(photo).toMatchObject({ fileId: after.photoFileId, mime: "image/jpeg" });
+    expect(await readAll(photo.file!.stream)).toEqual(JPEG);
+    // Si el navegador ya tiene esa foto, no se vuelve a leer el archivo.
+    expect(await employees.openEmployeePhoto(consulta, id, after.photoFileId)).toMatchObject({ file: null });
+
+    const audit = await lastAudit({ entityId: id });
+    expect(audit).toMatchObject({
+      action: "UPDATE",
+      entityType: "Employee",
+      before: { photoFileId: null },
+      after: { photoFileId: after.photoFileId },
+      message: expect.stringMatching(/^Foto del legajo \d+: Prueba, Empleado/),
+    });
+    const admin = await actorFor((await createTestUser(ADMIN_ROLE)).id);
+    expect((await getAuditEntry(admin, audit!.id)).diff).toEqual([
+      { field: "photoFileId", label: "Foto", before: null, after: after.photo!.originalName, changed: true },
+    ]);
+  });
+
+  it("reemplazarla o quitarla no borra los archivos anteriores", async () => {
+    const { id } = await employees.createEmployee(rrhh, validInput());
+    await employees.setEmployeePhoto(rrhh, id, image(JPEG));
+    const first = await photoOf(id);
+    await employees.setEmployeePhoto(rrhh, id, image(PNG, "otra.png", "image/png"));
+    const second = await photoOf(id);
+    expect(second.photoFileId).not.toBe(first.photoFileId);
+    expect(second.photo).toMatchObject({ mimeType: "image/png", originalName: expect.stringMatching(/\.png$/) });
+    expect(await lastAudit({ entityId: id })).toMatchObject({
+      before: { photoFileId: first.photoFileId },
+      after: { photoFileId: second.photoFileId },
+    });
+
+    await employees.removeEmployeePhoto(rrhh, id);
+    expect((await photoOf(id)).photoFileId).toBeNull();
+    expect((await employees.getEmployee(rrhh, id)).photoUrl).toBeNull();
+    expect(await lastAudit({ entityId: id })).toMatchObject({
+      before: { photoFileId: second.photoFileId },
+      after: { photoFileId: null },
+      message: expect.stringContaining("Foto quitada"),
+    });
+    await expect(employees.openEmployeePhoto(rrhh, id, null)).rejects.toBeInstanceOf(NotFoundError);
+
+    for (const file of [first.photo!, second.photo!]) {
+      expect(await db.storedFile.findUnique({ where: { id: file.id } })).not.toBeNull();
+      await access(path.join(process.env.STORAGE_DIR!, file.storageKey));
+    }
+    // Quitar una foto que ya no está no audita nada nuevo.
+    const audits = await db.auditLog.count({ where: { entityId: id } });
+    await employees.removeEmployeePhoto(rrhh, id);
+    expect(await db.auditLog.count({ where: { entityId: id } })).toBe(audits);
+  });
+
+  it("sin permiso de edición no se cambia, y solo acepta imágenes JPG o PNG", async () => {
+    const { id } = await employees.createEmployee(rrhh, validInput());
+    expect(await appErrorOf(employees.setEmployeePhoto(consulta, id, image(JPEG)))).toBeInstanceOf(ForbiddenError);
+    expect(await appErrorOf(employees.setEmployeePhoto(administracion, id, image(JPEG)))).toBeInstanceOf(
+      ForbiddenError,
+    );
+    expect(await appErrorOf(employees.removeEmployeePhoto(consulta, id))).toBeInstanceOf(ForbiddenError);
+
+    const pdf = await appErrorOf(employees.setEmployeePhoto(rrhh, id, image(PDF, "foto.jpg")));
+    expect(pdf).toBeInstanceOf(ValidationError);
+    expect(pdf).toMatchObject({ fieldErrors: { file: [expect.stringContaining("JPG o PNG")] } });
+    expect(await appErrorOf(employees.setEmployeePhoto(rrhh, id, null))).toBeInstanceOf(ValidationError);
+    expect((await photoOf(id)).photoFileId).toBeNull();
+  });
+
+  it("si el legajo no existe, no deja archivos sueltos", async () => {
+    const stored = async () =>
+      (await readdir(process.env.STORAGE_DIR!, { recursive: true, withFileTypes: true })).filter((f) => f.isFile())
+        .length;
+    const files = await stored();
+    const error = await appErrorOf(
+      employees.setEmployeePhoto(rrhh, "00000000-0000-7000-8000-000000000000", image(JPEG)),
+    );
+    expect(error).toBeInstanceOf(NotFoundError);
+    expect(await stored()).toBe(files);
   });
 });

@@ -103,6 +103,7 @@ const REF_FIELDS: Record<string, AuditRef> = {
   conceptTypeId: "salaryConceptType",
   vacationBalanceId: "vacationBalance",
   fileId: "storedFile",
+  photoFileId: "storedFile",
   exitId: "exit",
   leaveRecordId: "leaveRecord",
 };

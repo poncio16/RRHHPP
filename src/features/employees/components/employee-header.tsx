@@ -8,9 +8,12 @@ import { formatDate, todayInTimeZone } from "@/lib/format";
 import { formatSeniority, seniority } from "../calc";
 import { STATUS_LABELS } from "../constants";
 import type { EmployeeView } from "../service";
+import { EmployeePhoto } from "./employee-photo";
 
 export type EmployeePageAccess = {
   canEdit: boolean;
+  /** Cargar o cambiar la foto (alcanza con editar legajos; no muestra datos personales). */
+  canChangePhoto: boolean;
   canSeeBank: boolean;
   canSeeDocuments: boolean;
   canSeeLeaves: boolean;
@@ -40,6 +43,7 @@ export function EmployeeHeader({
 }) {
   const {
     canEdit,
+    canChangePhoto,
     canSeeBank,
     canSeeDocuments,
     canSeeLeaves,
@@ -73,30 +77,39 @@ export function EmployeeHeader({
         <ChevronLeft className="size-4" aria-hidden /> Empleados
       </Link>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold tracking-tight">
-              {employee.lastName}, {employee.firstName}
-            </h1>
-            {suspension ? (
-              <Badge variant="warning">Suspendido hasta el {formatDate(suspension.endDate)}</Badge>
-            ) : (
-              <Badge variant={active ? "success" : "muted"}>{STATUS_LABELS[employee.status]}</Badge>
-            )}
-            {pendingExit && (
-              <Link href={`${base}/historial`}>
-                <Badge variant="warning">Egreso en trámite: {formatDate(pendingExit.exitDate)}</Badge>
-              </Link>
-            )}
+        <div className="flex min-w-0 items-center gap-4">
+          <EmployeePhoto
+            employeeId={employee.id}
+            name={`${employee.firstName} ${employee.lastName}`}
+            initials={`${employee.firstName.charAt(0)}${employee.lastName.charAt(0)}`.toUpperCase()}
+            photoUrl={employee.photoUrl}
+            canChange={canChangePhoto}
+          />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-semibold tracking-tight">
+                {employee.lastName}, {employee.firstName}
+              </h1>
+              {suspension ? (
+                <Badge variant="warning">Suspendido hasta el {formatDate(suspension.endDate)}</Badge>
+              ) : (
+                <Badge variant={active ? "success" : "muted"}>{STATUS_LABELS[employee.status]}</Badge>
+              )}
+              {pendingExit && (
+                <Link href={`${base}/historial`}>
+                  <Badge variant="warning">Egreso en trámite: {formatDate(pendingExit.exitDate)}</Badge>
+                </Link>
+              )}
+            </div>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Legajo {employee.fileNumber} · {employee.labor.position.name} · {employee.labor.department.name}
+            </p>
+            <p className="text-muted-foreground text-sm">
+              Ingreso {formatDate(employee.labor.hireDate)}
+              {employee.labor.exitDate && <> · Egreso {formatDate(employee.labor.exitDate)}</>} · Antigüedad{" "}
+              {formatSeniority(seniority(employee.labor.seniorityDate, to))}
+            </p>
           </div>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Legajo {employee.fileNumber} · {employee.labor.position.name} · {employee.labor.department.name}
-          </p>
-          <p className="text-muted-foreground text-sm">
-            Ingreso {formatDate(employee.labor.hireDate)}
-            {employee.labor.exitDate && <> · Egreso {formatDate(employee.labor.exitDate)}</>} · Antigüedad{" "}
-            {formatSeniority(seniority(employee.labor.seniorityDate, to))}
-          </p>
         </div>
         {((canEdit && current === "datos") || actions) && (
           <div className="flex flex-wrap gap-2">

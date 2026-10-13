@@ -586,6 +586,9 @@ model Employee {
   workplaceId     String         @map("workplace_id") @db.Uuid
   supervisorId    String?        @map("supervisor_id") @db.Uuid
 
+  /// Foto actual del legajo. Las anteriores quedan en stored_file (no se borran).
+  photoFileId String? @map("photo_file_id") @db.Uuid
+
   // Control
   version     Int      @default(1)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
@@ -609,6 +612,7 @@ model Employee {
   workplace     Workplace            @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
   supervisor    Employee?            @relation("EmployeeSupervisor", fields: [supervisorId], references: [id], onDelete: Restrict)
   subordinates  Employee[]           @relation("EmployeeSupervisor")
+  photo         StoredFile?          @relation("EmployeePhoto", fields: [photoFileId], references: [id], onDelete: Restrict)
 
   user             User?                   @relation("UserEmployee")
   bankAccount      EmployeeBankAccount?
@@ -925,8 +929,9 @@ model StoredFile {
   uploadedById String   @map("uploaded_by_id") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  uploadedBy User       @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
-  documents  Document[]
+  uploadedBy     User       @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  documents      Document[]
+  employeePhotos Employee[] @relation("EmployeePhoto")
 
   @@map("stored_file")
 }

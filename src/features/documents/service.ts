@@ -6,9 +6,8 @@ import { auditDiff, recordAudit } from "@/server/audit";
 import { assertPermission, hasPermission } from "@/server/authz";
 import type { ActorContext } from "@/server/context";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
-import { logger } from "@/server/logger";
 import { getSetting } from "@/server/settings";
-import { newStorageKey, storage } from "@/server/storage";
+import { newStorageKey, storage, withStoredFile } from "@/server/storage";
 import { expiryState } from "./expiry";
 import { detectFileType, FILE_TYPES_LABEL, safeFileName } from "./files";
 import * as repo from "./repository";
@@ -142,23 +141,6 @@ async function validateType(ctx: ActorContext, data: DocumentData, currentTypeId
     throw new ValidationError(undefined, { expiryDate: [`"${type.name}" requiere fecha de vencimiento.`] });
   }
   return type;
-}
-
-/**
- * Guarda el archivo y ejecuta `persist`; si la base falla, descarta el archivo
- * recién escrito (nunca quedó asociado a un registro).
- */
-async function withStoredFile<T>(file: PreparedFile | null, persist: () => Promise<T>): Promise<T> {
-  if (!file) return persist();
-  await storage().put(file.key, file.bytes);
-  try {
-    return await persist();
-  } catch (error) {
-    await storage()
-      .discard(file.key)
-      .catch((e: unknown) => logger.error({ err: e, key: file.key }, "No se pudo descartar un archivo huérfano"));
-    throw error;
-  }
 }
 
 function toRecord(data: DocumentData) {

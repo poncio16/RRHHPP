@@ -95,10 +95,18 @@ export function zonedInstant(date: Date, minutes: number, timeZone = DEFAULT_TIM
   return new Date(corrected === offset ? instant : guess - corrected * 60_000);
 }
 
-/** Instante → "HH:mm" en la zona horaria indicada. */
-export function formatTime(instant: Date | null | undefined, timeZone = DEFAULT_TIMEZONE): string {
+/** Instante → "HH:mm" (o "HH:mm:ss") en la zona horaria indicada. */
+export function formatTime(
+  instant: Date | null | undefined,
+  timeZone = DEFAULT_TIMEZONE,
+  { seconds = false } = {},
+): string {
   if (!instant) return "";
-  return new Intl.DateTimeFormat("es-AR", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(
-    instant,
-  );
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: seconds ? "2-digit" : undefined,
+    hourCycle: "h23",
+  }).format(instant);
 }

@@ -1,14 +1,17 @@
 import "server-only";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import * as catalogs from "@/features/catalogs/repository";
 import type { Prisma } from "@/generated/prisma/client";
-import { formatDate, parseIsoDate, todayInTimeZone, toIsoDate } from "@/lib/format";
+import { formatDate, formatTime, parseIsoDate, todayInTimeZone, toIsoDate } from "@/lib/format";
 import { paginate } from "@/lib/list/query";
 import { maskCbu } from "@/lib/validators";
 import { auditDiff, recordAudit, sanitizeForAudit } from "@/server/audit";
 import { assertPermission, hasPermission } from "@/server/authz";
 import type { ActorContext } from "@/server/context";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
+import { getSetting } from "@/server/settings";
+import { newStorageKey, storage, withStoredFile } from "@/server/storage";
+import { detectFileType } from "@/features/documents/files";
 import { HISTORIC_FIELD_NAMES, HISTORIC_FIELDS, STATUS_LABELS, type HistoricField } from "./constants";
 import * as repo from "./repository";
 import { EXPORT_MAX_ROWS, type Column, type ReportResult } from "@/features/reports/table";
@@ -174,6 +177,8 @@ export async function getEmployee(ctx: ActorContext, id: string) {
         }
       : null,
     formValues: canSeePersonal ? toFormValues(employee) : null,
+    /** La versión en la URL cambia con cada foto nueva: el navegador nunca muestra una vieja. */
+    photoUrl: employee.photoFileId ? `/api/empleados/${employee.id}/foto?v=${employee.photoFileId}` : null,
   };
 }
 
@@ -368,11 +373,12 @@ type EmployeeRecord = ReturnType<typeof toRecord>;
 
 /**
  * Campos del legajo que se guardan en la auditoría: sin el id (es el registro
- * afectado) ni las relaciones incluidas, que ya están como `…Id`.
+ * afectado), ni las relaciones incluidas, que ya están como `…Id`, ni la foto,
+ * que se audita al cambiarla.
  */
 function auditable(e: Partial<Record<string, unknown>>) {
-  const { id, createdAt, updatedAt, createdById, updatedById, version, ...rest } = e;
-  void [id, createdAt, updatedAt, createdById, updatedById, version];
+  const { id, createdAt, updatedAt, createdById, updatedById, version, photoFileId, ...rest } = e;
+  void [id, createdAt, updatedAt, createdById, updatedById, version, photoFileId];
   return Object.fromEntries(
     Object.entries(rest).filter(
       ([key, v]) => v instanceof Date || typeof v !== "object" || (v === null && !(`${key}Id` in rest)),
@@ -802,4 +808,104 @@ export async function saveBankAccount(ctx: ActorContext, employeeId: string, inp
       tx,
     );
   });
+}
+
+/* ----------------------------------------------------------------------------
+ * Foto del legajo
+ * ------------------------------------------------------------------------- */
+
+const PHOTO_MIME_TYPES: readonly string[] = ["image/jpeg", "image/png"];
+
+/**
+ * Carga o reemplaza la foto del legajo. La anterior no se borra: su archivo
+ * queda guardado y la auditoría registra cuál era.
+ */
+export async function setEmployeePhoto(ctx: ActorContext, employeeId: string, file: File | null) {
+  await assertPermission(ctx, "employee:write", MODULE);
+  if (!file || file.size === 0) throw new ValidationError(undefined, { file: ["Sacá o elegí una foto."] });
+  const { maxFileSizeMb } = await getSetting("documents");
+  if (file.size > maxFileSizeMb * 1024 * 1024) {
+    throw new ValidationError(undefined, { file: [`La foto supera el máximo de ${maxFileSizeMb} MB.`] });
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = detectFileType(bytes);
+  if (!type || !PHOTO_MIME_TYPES.includes(type.mime)) {
+    throw new ValidationError(undefined, {
+      file: ["La foto tiene que ser una imagen JPG o PNG (se revisa el contenido, no solo la extensión)."],
+    });
+  }
+  const prepared = { key: newStorageKey(), bytes };
+  // Fecha y hora en el nombre: en la auditoría se distingue cuál foto reemplazó a cuál.
+  const now = new Date();
+  const stamp = `${toIsoDate(todayInTimeZone(undefined, now))}-${formatTime(now, undefined, { seconds: true }).replaceAll(":", "")}`;
+
+  await withStoredFile(prepared, () =>
+    repo.transaction(async (tx) => {
+      const employee = await repo.lockForPhoto(employeeId, tx);
+      if (!employee) throw new NotFoundError("El legajo no existe.");
+      const stored = await repo.createStoredFile(
+        {
+          storageKey: prepared.key,
+          originalName: `foto-legajo-${employee.fileNumber}-${stamp}.${type.extension}`,
+          mimeType: type.mime,
+          sizeBytes: bytes.byteLength,
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+          uploadedById: ctx.userId,
+        },
+        tx,
+      );
+      await repo.setPhoto(employeeId, stored.id, ctx.userId, tx);
+      await recordAudit(
+        ctx,
+        {
+          action: "UPDATE",
+          module: MODULE,
+          entityType: "Employee",
+          entityId: employeeId,
+          before: { photoFileId: employee.photoFileId },
+          after: { photoFileId: stored.id },
+          message: `Foto del legajo ${employee.fileNumber}: ${employee.lastName}, ${employee.firstName}`,
+        },
+        tx,
+      );
+    }),
+  );
+}
+
+/** Saca la foto del legajo. El archivo no se borra: sigue en la auditoría. */
+export async function removeEmployeePhoto(ctx: ActorContext, employeeId: string) {
+  await assertPermission(ctx, "employee:write", MODULE);
+  await repo.transaction(async (tx) => {
+    const employee = await repo.lockForPhoto(employeeId, tx);
+    if (!employee) throw new NotFoundError("El legajo no existe.");
+    if (!employee.photoFileId) return;
+    await repo.setPhoto(employeeId, null, ctx.userId, tx);
+    await recordAudit(
+      ctx,
+      {
+        action: "UPDATE",
+        module: MODULE,
+        entityType: "Employee",
+        entityId: employeeId,
+        before: { photoFileId: employee.photoFileId },
+        after: { photoFileId: null },
+        message: `Foto quitada del legajo ${employee.fileNumber}: ${employee.lastName}, ${employee.firstName}`,
+      },
+      tx,
+    );
+  });
+}
+
+/**
+ * Foto actual para mostrarla. La ve quien puede abrir el legajo; no se
+ * audita cada vista, igual que la ficha. Si `knownFileId` es la foto
+ * vigente, no se abre el archivo (el navegador ya la tiene).
+ */
+export async function openEmployeePhoto(ctx: ActorContext, employeeId: string, knownFileId: string | null) {
+  await assertPermission(ctx, "employee:read", MODULE);
+  const photo = await repo.findPhoto(employeeId);
+  if (!photo) throw new NotFoundError("El legajo no tiene foto.");
+  const meta = { fileId: photo.id, mime: photo.mimeType, name: photo.originalName };
+  if (knownFileId === photo.id) return { ...meta, file: null };
+  return { ...meta, file: await storage().open(photo.storageKey) };
 }
