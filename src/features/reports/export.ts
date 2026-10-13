@@ -1,6 +1,7 @@
 import "server-only";
 import { exportAuditLog } from "@/features/audit/service";
 import { exportEmployeeList } from "@/features/employees/service";
+import { exportLeaves, exportVacations } from "@/features/leaves/service";
 import { exportNovelties, exportNoveltySheet } from "@/features/novelties/service";
 import { toIsoDate, todayInTimeZone } from "@/lib/format";
 import { recordAudit } from "@/server/audit";
@@ -8,17 +9,24 @@ import { assertPermission } from "@/server/authz";
 import type { ActorContext } from "@/server/context";
 import { NotFoundError } from "@/server/errors";
 import { reportToXlsx, tableToCsv } from "@/server/export";
-import { isReportSlug, REPORTS } from "./definitions";
+import { isReportSlug, REPORTS, type ReportSlug } from "./definitions";
 import { runReport } from "./service";
 import type { ReportResult } from "./table";
 
-/** Listados exportables además de los reportes. */
+/** Listados exportables además de los reportes; la clave no puede ser la de un reporte. */
 const LISTS = {
   empleados: { module: "empleados", run: exportEmployeeList },
+  licencias: { module: "licencias", run: exportLeaves },
+  "listado-vacaciones": { module: "vacaciones", run: exportVacations },
   novedades: { module: "novedades", run: exportNovelties },
   "planilla-novedades": { module: "novedades", run: exportNoveltySheet },
   auditoria: { module: "auditoria", run: exportAuditLog },
-} as const;
+} as const satisfies Record<
+  string,
+  { module: string; run: (ctx: ActorContext, query: unknown) => Promise<ReportResult> }
+> & {
+  [K in ReportSlug]?: never;
+};
 
 export type ExportFormat = "csv" | "xlsx";
 

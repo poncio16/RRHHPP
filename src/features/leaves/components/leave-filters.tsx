@@ -1,5 +1,9 @@
 import { DateFilter } from "@/components/list/date-filter";
 import { FilterSelect } from "@/components/list/filter-select";
+import { LEAVE_CLASS_FILTER_LABELS, LEAVE_STATUS_FILTER_LABELS, LEAVE_TIMING_FILTER_LABELS } from "../constants";
+
+const optionsOf = (labels: Record<string, string>) =>
+  Object.entries(labels).map(([value, label]) => ({ value, label }));
 
 /**
  * Filtros del listado de licencias (se guardan en la URL). `withClass` muestra
@@ -23,13 +27,7 @@ export function LeaveFilters({
           <FilterSelect
             name="class"
             label="Clase"
-            options={[
-              { value: "", label: "Todas las clases" },
-              { value: "licencias", label: "Licencias" },
-              { value: "ausencias", label: "Ausencias" },
-              { value: "vacaciones", label: "Vacaciones" },
-              { value: "suspensiones", label: "Suspensiones" },
-            ]}
+            options={[{ value: "", label: "Todas las clases" }, ...optionsOf(LEAVE_CLASS_FILTER_LABELS)]}
           />
         )}
         {types.length > 1 && (
@@ -43,14 +41,7 @@ export function LeaveFilters({
           name="status"
           label="Estado"
           defaultValue="vigentes"
-          options={[
-            { value: "vigentes", label: "Solicitadas y aprobadas" },
-            { value: "pendientes", label: "Pendientes de aprobación" },
-            { value: "aprobadas", label: "Aprobadas" },
-            { value: "rechazadas", label: "Rechazadas" },
-            { value: "anuladas", label: "Anuladas" },
-            { value: "todas", label: "Todas" },
-          ]}
+          options={optionsOf(LEAVE_STATUS_FILTER_LABELS)}
         />
         {withCertificate && (
           <FilterSelect
@@ -65,12 +56,7 @@ export function LeaveFilters({
         <FilterSelect
           name="timing"
           label="Momento"
-          options={[
-            { value: "", label: "Cualquier fecha" },
-            { value: "en-curso", label: "En curso hoy" },
-            { value: "proximas", label: "Próximas" },
-            { value: "finalizadas", label: "Finalizadas" },
-          ]}
+          options={[{ value: "", label: "Cualquier fecha" }, ...optionsOf(LEAVE_TIMING_FILTER_LABELS)]}
         />
         <FilterSelect
           name="sort"

@@ -5,7 +5,12 @@ import { DOCUMENT_STATUS_LABELS } from "@/features/documents/constants";
 import { SEX_OPTIONS, STATUS_LABELS } from "@/features/employees/constants";
 import { EXIT_STATUS_LABELS } from "@/features/exits/constants";
 import { JOB_STATUS } from "@/features/imports/constants";
-import { LEAVE_STATUS_LABELS } from "@/features/leaves/constants";
+import {
+  LEAVE_CLASS_FILTER_LABELS,
+  LEAVE_STATUS_FILTER_LABELS,
+  LEAVE_STATUS_LABELS,
+  LEAVE_TIMING_FILTER_LABELS,
+} from "@/features/leaves/constants";
 import { NOVELTY_SOURCE_LABELS, NOVELTY_STATUS_LABELS } from "@/features/novelties/constants";
 import { REPORTS } from "@/features/reports/definitions";
 import { DAY_NAMES } from "@/features/schedules/calc";
@@ -86,6 +91,8 @@ const STATUS_LABELS_BY_ENTITY: Record<string, Record<string, string>> = {
 
 const LIST_TITLES: Record<string, string> = {
   empleados: "Empleados",
+  licencias: "Licencias y ausencias",
+  "listado-vacaciones": "Vacaciones",
   novedades: "Novedades",
   "planilla-novedades": "Planilla de novedades",
   auditoria: "Auditoría",
@@ -140,6 +147,9 @@ const FILTER_LABELS: Record<string, string> = {
   resultado: "Resultado",
   entidad: "Tipo de registro",
   registro: "Registro",
+  class: "Clase",
+  timing: "Momento",
+  certificado: "Certificado",
 };
 
 const FILTER_VALUES: Record<string, (value: string) => string | undefined> = {
@@ -147,6 +157,11 @@ const FILTER_VALUES: Record<string, (value: string) => string | undefined> = {
   accion: (v) => ACTION_LABELS[v as keyof typeof ACTION_LABELS],
   resultado: (v) => RESULT_LABELS[v as keyof typeof RESULT_LABELS]?.label,
   entidad: entityLabel,
+  // Filtros de Licencias y Vacaciones; los de otros listados no coinciden con estos valores.
+  status: (v) => own(LEAVE_STATUS_FILTER_LABELS, v),
+  class: (v) => own(LEAVE_CLASS_FILTER_LABELS, v),
+  timing: (v) => own(LEAVE_TIMING_FILTER_LABELS, v),
+  certificado: (v) => (v === "falta" ? "Falta el certificado" : undefined),
 };
 
 /** Filtros que pueden ser un mes ("2026-03"): el período de un listado o los extremos de Altas y bajas. */

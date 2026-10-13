@@ -12,8 +12,10 @@ import { LeaveFilters } from "@/features/leaves/components/leave-filters";
 import { LeavesTable } from "@/features/leaves/components/leaves-table";
 import { loadLeaveFormData } from "@/features/leaves/page-data";
 import { getEmployeeOptions, listLeaves } from "@/features/leaves/service";
+import { ExportButtons } from "@/features/reports/components/export-buttons";
 import { VacationTabs } from "@/features/vacations/components/vacation-tabs";
 import { flattenSearchParams } from "@/lib/list/query";
+import { hasPermission } from "@/server/authz";
 import { requirePageAccess } from "@/server/auth/request";
 
 export const metadata: Metadata = { title: "Vacaciones" };
@@ -56,15 +58,18 @@ async function VacationsContent({ searchParams }: Pick<Props, "searchParams">) {
         title="Vacaciones"
         description="Solicitudes y aprobaciones de vacaciones. Los días se descuentan del saldo del período elegido."
         actions={
-          edit && (
-            <LeaveDialog
-              employeeId={null}
-              employees={employees}
-              types={edit.types}
-              canApprove={form.canApprove}
-              defaultClass="VACACIONES"
-            />
-          )
+          <>
+            {hasPermission(ctx, "export:run") && <ExportButtons resource="listado-vacaciones" params={params} />}
+            {edit && (
+              <LeaveDialog
+                employeeId={null}
+                employees={employees}
+                types={edit.types}
+                canApprove={form.canApprove}
+                defaultClass="VACACIONES"
+              />
+            )}
+          </>
         }
       />
       <VacationTabs current="/vacaciones" />
