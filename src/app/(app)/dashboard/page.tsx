@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Suspense } from "react";
+import { type ReactNode, Suspense } from "react";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { PeriodNav } from "@/components/list/period-nav";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { relativeDays, daysBetween } from "@/features/alerts/build";
@@ -13,7 +14,7 @@ import { DistributionCard } from "@/features/dashboard/components/distribution-c
 import { EventList } from "@/features/dashboard/components/event-list";
 import { StatTile } from "@/features/dashboard/components/stat-tile";
 import { getDashboard, type PendingTask } from "@/features/dashboard/service";
-import { getSystemStatus } from "@/features/system/service";
+import { getSetupChecklist, getSystemStatus, type SetupChecklist } from "@/features/system/service";
 import {
   formatDate,
   formatDecimal,
@@ -60,7 +61,8 @@ const people = (n: number) => (n === 1 ? "1 persona" : `${formatInteger(n)} pers
 
 async function Content({ searchParams }: Pick<Props, "searchParams">) {
   const { ctx } = await requirePageAccess();
-  const data = await getDashboard(ctx, flattenSearchParams(await searchParams));
+  const query = flattenSearchParams(await searchParams);
+  const [data, setup] = await Promise.all([getDashboard(ctx, query), getSetupChecklist(ctx)]);
   const { staff, movements, absence, leaves, alerts, tasks } = data;
   const today = todayInTimeZone();
   const link = (period: Date | null) => (period ? `/dashboard?periodo=${periodKey(period)}` : null);
@@ -77,6 +79,7 @@ async function Content({ searchParams }: Pick<Props, "searchParams">) {
             description="Tu rol no tiene acceso a datos de personal. Pedile a quien administra el sistema que revise tus permisos."
           />
         </Card>
+        <SetupSection setup={setup} />
         <TasksSection tasks={tasks} />
         {showConfig && <SystemStatusSection />}
       </div>
@@ -85,6 +88,7 @@ async function Content({ searchParams }: Pick<Props, "searchParams">) {
 
   return (
     <div className="space-y-8">
+      <SetupSection setup={setup} />
       <TasksSection tasks={tasks} />
 
       <section aria-labelledby="hoy" className="space-y-3">
@@ -314,6 +318,58 @@ async function Content({ searchParams }: Pick<Props, "searchParams">) {
 
       {showConfig && <SystemStatusSection />}
     </div>
+  );
+}
+
+/** Pasos de configuración que faltan, con enlace a la pantalla de cada uno. Sin nada pendiente, no se muestra. */
+function SetupSection({ setup }: { setup: SetupChecklist }) {
+  if (setup.steps.length === 0) return null;
+  return (
+    <section aria-labelledby="puesta-en-marcha" className="space-y-3">
+      <h2 id="puesta-en-marcha" className="text-lg font-semibold">
+        {setup.title}
+      </h2>
+      <Card>
+        <ol className="divide-y">
+          {setup.steps.map((step) => (
+            <li key={step.key} className="flex flex-col gap-3 px-4 py-3 text-sm sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <p className="font-medium">{step.title}</p>
+                <p className="text-muted-foreground">{step.detail}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {step.links.map((link) => (
+                  <Link key={link.href} href={link.href} className={buttonVariants({ variant: "outline", size: "sm" })}>
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ol>
+        {setup.review && (
+          <p className="text-muted-foreground border-t px-4 py-3 text-xs">
+            Además, revisá los <ReviewLink href="/configuracion/parametros">parámetros</ReviewLink> y, con el asesor
+            laboral,{" "}
+            {setup.review.leaveTypes && (
+              <>
+                los <ReviewLink href="/configuracion/catalogos/tipos-licencia">tipos de licencia</ReviewLink> y{" "}
+              </>
+            )}
+            las <ReviewLink href="/configuracion/vacaciones">reglas de vacaciones</ReviewLink>: vienen con valores de
+            referencia y el sistema no puede saber si ya los validaron.
+          </p>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+function ReviewLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <Link href={href} className="text-foreground underline underline-offset-4">
+      {children}
+    </Link>
   );
 }
 

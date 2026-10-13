@@ -147,6 +147,8 @@ Seguí la sección 4. Sin HTTPS no se puede iniciar sesión: la cookie de sesió
 
 Para cargar el personal existente podés usar **Importar** con la plantilla de Excel.
 
+Mientras falte algo, el **Inicio** muestra la tarjeta "Puesta en marcha" con los pasos que el sistema puede verificar (empresa, sectores, puestos, establecimientos, horarios, feriados del año, el primer legajo y el segundo administrador), cada uno a quien tiene permiso para hacerlo. Los parámetros y la revisión con el asesor no se pueden verificar desde la aplicación: mientras dure la puesta en marcha, la tarjeta solo se los recuerda al administrador. Los backups se controlan en el servidor (sección 6). Cerca de fin de año (30 días antes del 1 de enero por defecto, se cambia en Parámetros → Alertas) también pide los feriados del año siguiente. Si solo faltan feriados, la tarjeta se llama "Configuración pendiente".
+
 ## 4. Proxy inverso y HTTPS
 
 La aplicación escucha solo en `127.0.0.1:3000`: desde internet se llega únicamente a través de nginx, que pone el certificado HTTPS. El ejemplo completo está en [`deploy/nginx/rrhh.conf`](../deploy/nginx/rrhh.conf) y fue probado con nginx 1.29.
