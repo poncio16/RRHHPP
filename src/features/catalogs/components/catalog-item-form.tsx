@@ -81,7 +81,7 @@ export function CatalogItemForm({
         const required =
           field.type === "hours" ||
           (field.type === "choice" && !field.optional) ||
-          (field.type !== "days" && field.type !== "choice" && !!field.required);
+          (field.type !== "days" && field.type !== "position" && field.type !== "choice" && !!field.required);
         if (field.type === "choice") {
           const locked = field.immutable && mode === "update";
           return (
@@ -132,7 +132,13 @@ export function CatalogItemForm({
             <Input
               {...fieldA11y(id, error)}
               autoComplete="off"
-              inputMode={field.type === "hours" ? "decimal" : field.type === "days" ? "numeric" : undefined}
+              inputMode={
+                field.type === "hours"
+                  ? "decimal"
+                  : field.type === "days" || field.type === "position"
+                    ? "numeric"
+                    : undefined
+              }
               disabled={locked}
               {...form.register(field.name)}
             />

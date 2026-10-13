@@ -84,7 +84,12 @@ const STATUS_LABELS_BY_ENTITY: Record<string, Record<string, string>> = {
   ImportJob: Object.fromEntries(Object.entries(JOB_STATUS).map(([value, s]) => [value, s.label])),
 };
 
-const LIST_TITLES: Record<string, string> = { empleados: "Empleados", novedades: "Novedades", auditoria: "Auditoría" };
+const LIST_TITLES: Record<string, string> = {
+  empleados: "Empleados",
+  novedades: "Novedades",
+  "planilla-novedades": "Planilla de novedades",
+  auditoria: "Auditoría",
+};
 
 /** Códigos fijos de otros campos, iguales en todos los registros. */
 const VALUE_LABELS: Record<string, Record<string, string>> = {

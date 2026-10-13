@@ -257,7 +257,7 @@ Los datos salariales del seed de demostración son ficticios.
 
 ## Novedades
 
-**Novedades** (menú) es la bandeja de lo que hay que pasar al sistema de liquidación en cada mes; la pestaña **Novedades** de cada legajo muestra las del empleado. Tipos: adelantos, bonificaciones, descuentos, horas extras, ausencias, llegadas tarde, cambios de categoría y salariales, premios, sanciones y otros (Configuración → Catálogos → Tipos de novedad).
+**Novedades** (menú) es la bandeja de lo que hay que pasar al sistema de liquidación en cada mes; la pestaña **Novedades** de cada legajo muestra las del empleado. Tipos: adelantos, bonificaciones, descuentos, horas extras, ausencias, vacaciones, llegadas tarde, cambios de categoría y salariales, premios, sanciones y otros (Configuración → Catálogos → Tipos de novedad).
 
 - **Manuales**: se cargan con empleado, fecha, tipo, período, importe o cantidad cuando el tipo lo pide, y observaciones. Queda registrado quién la cargó.
 - **Generadas**: "Generar novedades" arma las del mes a partir de las licencias aprobadas (si su tipo tiene "Genera novedad"), la asistencia (horas extras, llegadas tarde y ausencias del mes), los cambios de básico y los cambios de categoría, según el campo "Se genera desde" de cada tipo de novedad. Antes de aplicar muestra qué crea, recalcula o anula. Se puede repetir: lo que cambió vuelve a pendiente, lo informado no se toca y lo anulado a mano no se recrea.
@@ -265,6 +265,8 @@ Los datos salariales del seed de demostración son ficticios.
 - **Permisos**: "Ver novedades", "Registrar novedades" (cargar, editar, aprobar, anular y generar) y "Marcar novedades como informadas". Sin "Ver información salarial", las novedades de cambios salariales se muestran sin importe.
 
 Las novedades del período, con los filtros de la pantalla, se exportan a Excel o CSV desde los botones de arriba (permiso "Exportar listados y reportes"), para cargarlas en el sistema de liquidación.
+
+**Planilla para el contador** descarga un Excel con una fila por empleado con relación laboral en el mes (por legajo): legajo, apellido y nombre, CUIL, categoría, fecha de ingreso, jornada (horas semanales del tipo de jornada del legajo o, si no tiene, de su horario), sueldo básico vigente el último día del mes y una columna por cada tipo de novedad que tenga **Columna en la planilla del contador** en su catálogo, en ese orden. Cada columna suma las novedades aprobadas e informadas del mes: la cantidad si el tipo la pide (o si lo generan licencias, que informan días), el importe si pide importe (las dos, en columnas separadas, si pide ambas) y, si no pide ninguna, cuántas hay; sin novedades queda en 0. Arriba indica las pendientes de aprobar, que no entran. Toma el mes, la búsqueda y el sector de la pantalla. El CUIL sale con el permiso de datos personales y el básico con el de información salarial. De entrada son columnas ausencias, horas extras (todas juntas: el sistema no separa las del 50% y las del 100%), vacaciones (el tipo de licencia Vacaciones genera esa novedad) y adelantos. Para una columna de licencias por enfermedad hay que crear el tipo de novedad y elegirlo en "Genera novedad" de los tipos Enfermedad y Accidente; tené en cuenta que quien vea Novedades verá esos días aunque no tenga el permiso de datos de salud.
 
 ## Egresos e historial
 
@@ -323,7 +325,7 @@ El **Inicio** muestra indicadores calculados en el momento con los datos cargado
 | Antigüedad                | Personal activo por rangos y el detalle, a una fecha. Los rangos se ajustan en Configuración → Parámetros → Rangos de antigüedad.                                  | Reporte de antigüedad                                |
 | Remuneraciones informadas | Bruto, descuentos y neto informados de un mes, por sector y por empleado, con el aviso "no constituye liquidación de haberes".                                     | Reporte de remuneraciones y Ver información salarial |
 
-- **Exportar**: con el permiso "Exportar listados y reportes", cada reporte se descarga en **Excel** (una hoja por tabla, con fechas y números reales) y cada tabla en **CSV**. También se exportan los listados de **Empleados** y **Novedades** con los filtros de la pantalla. DNI y CUIL salen solo con permiso de datos personales, y los datos de salud siguen reservados.
+- **Exportar**: con el permiso "Exportar listados y reportes", cada reporte se descarga en **Excel** (una hoja por tabla, con fechas y números reales) y cada tabla en **CSV**. También se exportan los listados de **Empleados** y **Novedades** con los filtros de la pantalla, y la planilla de novedades para el contador. DNI y CUIL salen solo con permiso de datos personales, y los datos de salud siguen reservados.
 - **CSV**: separador punto y coma, coma decimal, fechas dd/mm/aaaa y codificación UTF-8 con BOM, para que Excel en español lo abra directo. Los textos que empiezan con `=`, `+`, `-` o `@` se exportan con un apóstrofo adelante para que no se tomen como fórmulas.
 - Cada exportación queda en la auditoría con el reporte, el formato, los filtros y la cantidad de filas. Los listados exportan hasta 10.000 filas.
 
@@ -373,7 +375,7 @@ Lo que el sistema **no** hace, a propósito o porque quedó fuera del alcance ac
 - La zona horaria es fija (`America/Argentina/Buenos_Aires`); todavía no se configura.
 - Una sola empresa por instalación; las sucursales se manejan como establecimientos.
 - No se borran registros del personal: legajos, documentos, licencias, novedades y egresos se dan de baja o se anulan con un motivo y quedan en el historial. Lo que sí se puede borrar es configuración, como un feriado mal cargado, y queda en la auditoría.
-- Se exportan los reportes y los listados de Empleados, Novedades y Auditoría; los demás listados no se exportan todavía.
+- Se exportan los reportes, los listados de Empleados, Novedades y Auditoría y la planilla de novedades para el contador; los demás listados no se exportan todavía.
 - La importación solo da de alta legajos nuevos: no actualiza legajos existentes ni importa otros datos.
 - Sin modo oscuro.
 

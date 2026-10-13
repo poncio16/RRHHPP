@@ -287,3 +287,106 @@ export async function listNoveltiesForExport(query: NoveltyListQuery, limit: num
     include: noveltyInclude,
   });
 }
+
+/* ----------------------------------------------------------------------------
+ * Planilla para el contador
+ * ------------------------------------------------------------------------- */
+
+/** Estados que van a la planilla: las pendientes todavía no se aprobaron y las anuladas no corren. */
+export const SHEET_STATUSES = ["APROBADA", "INFORMADA"] as const;
+
+/**
+ * Tipos con columna en la planilla, en su orden. Uno inactivo sigue
+ * apareciendo en los períodos en que tiene novedades.
+ */
+export async function sheetTypes(period: Date) {
+  return db.noveltyType.findMany({
+    where: {
+      sheetColumn: { not: null },
+      OR: [{ isActive: true }, { novelties: { some: { period, status: { in: [...SHEET_STATUSES] } } } }],
+    },
+    orderBy: [{ sheetColumn: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      requiresAmount: true,
+      requiresQuantity: true,
+      quantityUnit: true,
+      _count: { select: { leaveTypes: true } },
+    },
+  });
+}
+
+/**
+ * Empleados con relación laboral en algún día del período (o con novedades
+ * de la planilla en él), por legajo.
+ */
+export async function sheetEmployees(
+  filters: { q?: string; sector?: string },
+  period: { start: Date; end: Date; typeIds: string[] },
+  limit: number,
+) {
+  const and: Prisma.EmployeeWhereInput[] = [
+    {
+      OR: [
+        { hireDate: { lte: period.end }, OR: [{ exitDate: null }, { exitDate: { gte: period.start } }] },
+        {
+          novelties: {
+            some: {
+              period: period.start,
+              status: { in: [...SHEET_STATUSES] },
+              noveltyTypeId: { in: period.typeIds },
+            },
+          },
+        },
+      ],
+    },
+  ];
+  if (filters.sector) and.push({ departmentId: filters.sector });
+  if (filters.q) {
+    and.push(
+      /^\d{1,9}$/.test(filters.q)
+        ? { fileNumber: Number(filters.q) }
+        : { id: { in: await idsMatchingName(filters.q) } },
+    );
+  }
+  return db.employee.findMany({
+    where: { AND: and },
+    orderBy: { fileNumber: "asc" },
+    take: limit,
+    select: {
+      id: true,
+      fileNumber: true,
+      lastName: true,
+      firstName: true,
+      cuil: true,
+      hireDate: true,
+      category: { select: { name: true } },
+      workdayType: { select: { weeklyHours: true } },
+      workSchedule: { select: { weeklyHours: true } },
+    },
+  });
+}
+
+export async function sheetNovelties(period: Date, typeIds: string[], employeeIds: string[]) {
+  return db.novelty.findMany({
+    where: {
+      period,
+      status: { in: [...SHEET_STATUSES] },
+      noveltyTypeId: { in: typeIds },
+      employeeId: { in: employeeIds },
+    },
+    select: { employeeId: true, noveltyTypeId: true, quantity: true, amount: true, sourceType: true },
+  });
+}
+
+/** Pendientes de aprobar de los tipos y empleados de la planilla: no entran y se avisa. */
+export async function countSheetPending(period: Date, typeIds: string[], employeeIds: string[]) {
+  return db.novelty.count({
+    where: { period, status: "PENDIENTE", noveltyTypeId: { in: typeIds }, employeeId: { in: employeeIds } },
+  });
+}
+
+export async function findDepartmentName(id: string) {
+  return (await db.department.findUnique({ where: { id }, select: { name: true } }))?.name ?? null;
+}

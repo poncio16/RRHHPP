@@ -18,6 +18,8 @@ export function formatCell(value: Cell | undefined, type: Column["type"]): strin
       return formatPercent(value);
     case "decimal":
       return Number.isInteger(value) ? formatInteger(value) : formatDecimal(value);
+    case "number":
+      return String(value).replace(".", ",");
     default:
       return formatInteger(value);
   }

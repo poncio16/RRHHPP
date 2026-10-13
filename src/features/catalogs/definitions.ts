@@ -63,6 +63,15 @@ export type CatalogField =
   | {
       name: string;
       label: string;
+      /** Número de orden opcional (entero de 1 a `max`). */
+      type: "position";
+      max: number;
+      hint?: string;
+      inList?: boolean;
+    }
+  | {
+      name: string;
+      label: string;
       type: "ref";
       source: RefSource;
       /** Relación de Prisma con la que se lee la etiqueta en el listado. */
@@ -474,6 +483,14 @@ export const CATALOGS: Record<CatalogKey, CatalogDefinition> = {
         optional: true,
         options: Object.entries(NOVELTY_ORIGIN_LABELS).map(([value, label]) => ({ value, label })),
         hint: "Opcional. Al generar las novedades de un período se crean las de este tipo a partir de ese hecho. Cada hecho genera un solo tipo.",
+        inList: true,
+      },
+      {
+        name: "sheetColumn",
+        label: "Columna en la planilla del contador",
+        type: "position",
+        max: 99,
+        hint: "Opcional. Orden de su columna en la planilla de novedades para el contador (1 es la primera). Vacío: no aparece.",
         inList: true,
       },
     ],

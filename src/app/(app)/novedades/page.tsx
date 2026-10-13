@@ -18,11 +18,20 @@ import { getDepartmentOptions, getEmployeeOptions, getTypeOptions, listNovelties
 import { periodEnd, todayInTimeZone, toIsoDate } from "@/lib/format";
 import { hrefWith } from "@/lib/list/href";
 import { ExportButtons } from "@/features/reports/components/export-buttons";
+import { DownloadLink } from "@/features/reports/components/report-table";
 import { flattenSearchParams } from "@/lib/list/query";
 import { hasPermission } from "@/server/authz";
 import { requirePageAccess } from "@/server/auth/request";
 
 export const metadata: Metadata = { title: "Novedades" };
+
+/** La planilla del contador toma el período, la búsqueda y el sector; los demás filtros no la cambian. */
+function sheetHref(query: { periodo: string; q?: string; sector?: string }) {
+  const params = new URLSearchParams({ periodo: query.periodo, formato: "xlsx" });
+  if (query.q) params.set("q", query.q);
+  if (query.sector) params.set("sector", query.sector);
+  return `/api/exportar/planilla-novedades?${params.toString()}`;
+}
 
 type Props = PageProps<"/novedades">;
 
@@ -63,7 +72,10 @@ async function Content({ searchParams }: Pick<Props, "searchParams">) {
         actions={
           <>
             {hasPermission(ctx, "export:run") && (
-              <ExportButtons resource="novedades" params={{ ...params, periodo: query.periodo }} />
+              <>
+                <ExportButtons resource="novedades" params={{ ...params, periodo: query.periodo }} />
+                <DownloadLink href={sheetHref(query)} label="Planilla para el contador" />
+              </>
             )}
             {canWrite && (
               <>

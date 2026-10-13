@@ -1,7 +1,7 @@
 import "server-only";
 import { exportAuditLog } from "@/features/audit/service";
 import { exportEmployeeList } from "@/features/employees/service";
-import { exportNovelties } from "@/features/novelties/service";
+import { exportNovelties, exportNoveltySheet } from "@/features/novelties/service";
 import { toIsoDate, todayInTimeZone } from "@/lib/format";
 import { recordAudit } from "@/server/audit";
 import { assertPermission } from "@/server/authz";
@@ -16,6 +16,7 @@ import type { ReportResult } from "./table";
 const LISTS = {
   empleados: { module: "empleados", run: exportEmployeeList },
   novedades: { module: "novedades", run: exportNovelties },
+  "planilla-novedades": { module: "novedades", run: exportNoveltySheet },
   auditoria: { module: "auditoria", run: exportAuditLog },
 } as const;
 

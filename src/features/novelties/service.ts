@@ -5,7 +5,9 @@ import { holidaysBetween } from "@/features/leaves/repository";
 import { workDaysOf } from "@/features/leaves/service";
 import { formatMinutes } from "@/features/attendance/calc";
 import { CONCEPT_NATURE_LABELS, type ConceptNature } from "@/features/salaries/constants";
-import { EXPORT_MAX_ROWS, type ReportResult } from "@/features/reports/table";
+import { EXPORT_MAX_ROWS, type Column, type ReportResult } from "@/features/reports/table";
+import { currentSalaries } from "@/features/salaries/repository";
+import { findCompanyName } from "@/features/system/repository";
 import {
   formatDate,
   formatMoney,
@@ -29,6 +31,7 @@ import { getSetting } from "@/server/settings";
 import { isNoveltySource, NOVELTY_SOURCE_LABELS, NOVELTY_STATUS_LABELS, type NoveltyStatus } from "./constants";
 import { minutesToHours, planGeneration, type DesiredNovelty, type GeneratedNovelty } from "./generation";
 import * as repo from "./repository";
+import { noveltyColumns, noveltyTotals, type SheetType } from "./sheet";
 import {
   annulNoveltySchema,
   bulkNoveltySchema,
@@ -185,6 +188,113 @@ export async function exportNovelties(ctx: ActorContext, rawQuery: unknown): Pro
           observaciones: n.notes,
         })),
         empty: "No hay novedades con estos filtros.",
+      },
+    ],
+  };
+}
+
+/**
+ * Planilla de novedades para el contador: una fila por empleado con relación
+ * laboral en el período y una columna por cada tipo de novedad que tenga
+ * posición en el catálogo. Solo cuentan las aprobadas e informadas. El CUIL y
+ * el básico vigente al último día del mes salen con sus permisos; los
+ * importes de cambios de básico generados, como en la pantalla.
+ */
+export async function exportNoveltySheet(ctx: ActorContext, rawQuery: unknown): Promise<ReportResult> {
+  await assertPermission(ctx, "novelty:read", MODULE);
+  const parsed = noveltyListQuerySchema.parse(rawQuery);
+  const period = parsed.periodo ? parsePeriod(parsed.periodo)! : periodOf(todayInTimeZone());
+  const end = periodEnd(period);
+  const canSeePersonal = hasPermission(ctx, "employee.personal:read");
+  const canSeeSalary = hasPermission(ctx, "salary:read");
+
+  const types = (await repo.sheetTypes(period)).map(({ _count, ...type }): SheetType => ({
+    ...type,
+    linkedLeaveTypes: _count.leaveTypes,
+  }));
+  const typeIds = types.map((t) => t.id);
+  const employees = await repo.sheetEmployees(
+    { q: parsed.q, sector: parsed.sector },
+    { start: period, end, typeIds },
+    EXPORT_MAX_ROWS,
+  );
+  const ids = employees.map((e) => e.id);
+  const [novelties, pending, salaries, company, sector] = await Promise.all([
+    repo.sheetNovelties(period, typeIds, ids),
+    repo.countSheetPending(period, typeIds, ids),
+    canSeeSalary ? currentSalaries(ids, end) : null,
+    findCompanyName(),
+    parsed.sector ? repo.findDepartmentName(parsed.sector) : null,
+  ]);
+  // Un cambio de básico generado es un dato salarial: sin ese permiso su importe no suma.
+  const reserved = (n: (typeof novelties)[number]) => !canSeeSalary && n.sourceType === "SALARY_HISTORY";
+  const columnsOfTypes = noveltyColumns(types);
+  const totals = noveltyTotals(
+    columnsOfTypes,
+    novelties.map((n) => (reserved(n) ? { ...n, amount: null } : n)),
+  );
+  const hiddenAmounts = novelties.some(
+    (n) => reserved(n) && n.amount !== null && types.find((t) => t.id === n.noveltyTypeId)?.requiresAmount,
+  );
+
+  const columns: Column[] = [
+    { key: "legajo", label: "Legajo", type: "number" },
+    { key: "nombre", label: "Apellido y nombre" },
+    ...(canSeePersonal ? [{ key: "cuil", label: "CUIL" }] : []),
+    { key: "categoria", label: "Categoría" },
+    { key: "ingreso", label: "Fecha de ingreso", type: "date" },
+    { key: "jornada", label: "Jornada (hs semanales)", type: "number" },
+    ...(canSeeSalary ? [{ key: "sueldo", label: "Sueldo básico", type: "money" } as const] : []),
+    ...columnsOfTypes,
+  ];
+  const pendingLine =
+    pending === 1
+      ? "Hay 1 novedad pendiente de aprobar en el período: no está en la planilla."
+      : `Hay ${pending} novedades pendientes de aprobar en el período: no están en la planilla.`;
+
+  return {
+    title: "Planilla de novedades",
+    filters: [
+      `Novedades de ${formatPeriod(period)}, aprobadas e informadas.`,
+      ...(parsed.sector ? [`Sector: ${sector ?? "inexistente"}`] : []),
+      ...(parsed.q ? [`Búsqueda: ${parsed.q}`] : []),
+      ...(pending > 0 ? [pendingLine] : []),
+      ...(types.length === 0
+        ? [
+            "Ningún tipo de novedad tiene columna en la planilla: se eligen en Configuración → Catálogos → Tipos de novedad.",
+          ]
+        : []),
+      ...(canSeePersonal ? [] : ["Sin el permiso de datos personales no se incluye el CUIL."]),
+      ...(canSeeSalary
+        ? []
+        : [
+            hiddenAmounts
+              ? "Sin el permiso de información salarial no se incluyen el sueldo básico ni los importes de los cambios de básico."
+              : "Sin el permiso de información salarial no se incluye el sueldo básico.",
+          ]),
+      ...(employees.length === EXPORT_MAX_ROWS ? [`Se exportaron los primeros ${EXPORT_MAX_ROWS} empleados.`] : []),
+    ],
+    tables: [
+      {
+        id: "planilla",
+        title: "Novedades",
+        sheet: { heading: company ?? "Planilla de novedades" },
+        columns,
+        rows: employees.map((e) => {
+          const weeklyHours = e.workdayType?.weeklyHours ?? e.workSchedule?.weeklyHours ?? null;
+          const basic = salaries?.get(e.id)?.current.basicSalary ?? null;
+          return {
+            legajo: e.fileNumber,
+            nombre: fullName(e),
+            ...(canSeePersonal ? { cuil: e.cuil } : {}),
+            categoria: e.category?.name ?? null,
+            ingreso: e.hireDate,
+            jornada: weeklyHours === null ? null : Number(weeklyHours.toString()),
+            ...(canSeeSalary ? { sueldo: basic === null ? null : Number(basic.toString()) } : {}),
+            ...totals(e.id),
+          };
+        }),
+        empty: "No hay empleados con relación laboral en el período.",
       },
     ],
   };

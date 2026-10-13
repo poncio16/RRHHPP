@@ -167,6 +167,7 @@ const SCREENS: Record<string, string> = {
 const LIST_SCREENS: Record<string, string> = {
   empleados: "/empleados",
   novedades: "/novedades",
+  "planilla-novedades": "/novedades",
   auditoria: "/auditoria",
 };
 

@@ -26,7 +26,9 @@ function csvCell(value: Cell | undefined, type: Column["type"]): string {
         ? csvNumber(value * 100, 1)
         : type === "money" || type === "decimal"
           ? csvNumber(value, 2)
-          : String(value);
+          : type === "number"
+            ? String(value).replace(".", ",")
+            : String(value);
   } else text = safeText(value);
   return /[";\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
@@ -56,6 +58,48 @@ function sheetName(title: string, used: Set<string>): string {
   return name;
 }
 
+/* Planilla para enviar (`ReportTable.sheet`): Arial 8 con bordes finos y encabezado celeste, centrado y en varias líneas. */
+
+const SHEET_FONT = { name: "Arial", size: 8 };
+const THIN = { style: "thin" } as const;
+const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+
+function styleSheet(header: ExcelJS.Row, body: ExcelJS.Row[], columns: Column[]) {
+  header.eachCell((cell) => {
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF95B3D7" } };
+    cell.border = BORDER;
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+  });
+  for (const row of body) {
+    row.font = SHEET_FONT;
+    columns.forEach((c, i) => {
+      const cell = row.getCell(i + 1);
+      cell.border = BORDER;
+      // Textos a la izquierda; códigos, fechas y números centrados o a la derecha como en una planilla a mano.
+      if (c.type === "number" || c.type === "date") cell.alignment = { horizontal: "center" };
+    });
+  }
+}
+
+/** Líneas que ocupa un texto partido por palabras en una columna de `width` caracteres. */
+function wrappedLines(text: string, width: number): number {
+  let lines = 1;
+  let used = 0;
+  for (const word of text.split(/\s+/)) {
+    if (used > 0 && used + 1 + word.length > width) {
+      lines += 1;
+      used = word.length;
+    } else used += (used > 0 ? 1 : 0) + word.length;
+  }
+  return lines;
+}
+
+/** Alto del encabezado para que entre la etiqueta con más líneas (Arial 8: unos 11 puntos por línea). */
+function headerHeight(labels: [string, number][]): number {
+  const lines = Math.max(1, ...labels.map(([label, width]) => wrappedLines(label, Math.max(width - 1, 1))));
+  return Math.max(15, lines * 11 + 4);
+}
+
 export async function reportToXlsx(result: ReportResult, tables: ReportTable[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "RRHHPP";
@@ -64,33 +108,43 @@ export async function reportToXlsx(result: ReportResult, tables: ReportTable[]):
 
   for (const table of tables) {
     const sheet = workbook.addWorksheet(sheetName(table.title, used));
-    sheet.addRow([`${result.title} — ${table.title}`]).font = { bold: true, size: 13 };
+    const styled = table.sheet !== undefined;
+    sheet.addRow([safeText(table.sheet?.heading ?? `${result.title} — ${table.title}`)]).font = styled
+      ? { name: SHEET_FONT.name, bold: true, underline: true, size: 11 }
+      : { bold: true, size: 13 };
     for (const line of [...(result.notice ? [result.notice] : []), ...result.filters]) sheet.addRow([safeText(line)]);
     sheet.addRow([]);
 
     const header = sheet.addRow(table.columns.map((c) => c.label));
-    header.font = { bold: true };
+    header.font = styled ? { ...SHEET_FONT, bold: true } : { bold: true };
     const headerRow = header.number;
     const cellValue = (value: Cell | undefined) =>
       value === null || value === undefined ? null : typeof value === "string" ? safeText(value) : value;
-    for (const row of table.rows) sheet.addRow(table.columns.map((c) => cellValue(row[c.key])));
+    const body = table.rows.map((row) => sheet.addRow(table.columns.map((c) => cellValue(row[c.key]))));
     if (table.totals) sheet.addRow(table.columns.map((c) => cellValue(table.totals![c.key]))).font = { bold: true };
     if (table.rows.length === 0) sheet.addRow([table.empty]);
+    if (styled) styleSheet(header, body, table.columns);
 
     table.columns.forEach((c, i) => {
       const column = sheet.getColumn(i + 1);
       const format = c.type ? NUMBER_FORMATS[c.type] : undefined;
       if (format) column.numFmt = format;
+      // En la planilla el encabezado va en varias líneas: alcanza con que entre su palabra más larga.
+      const label = styled ? Math.max(...c.label.split(/\s+/).map((word) => word.length)) : c.label.length;
       const longest = Math.max(
-        c.label.length,
+        label,
         ...table.rows.slice(0, 500).map((r) => {
           const v = r[c.key];
           return v instanceof Date ? 10 : v === null || v === undefined ? 0 : String(v).length;
         }),
       );
-      column.width = Math.min(Math.max(longest + 2, 8), 50);
+      column.width = Math.min(Math.max(longest + 2, 8), styled ? 40 : 50);
     });
-    sheet.views = [{ state: "frozen", ySplit: headerRow }];
+    if (styled)
+      header.height = headerHeight(table.columns.map((c, i) => [c.label, sheet.getColumn(i + 1).width ?? 10]));
+    sheet.views = [
+      { state: "frozen", ySplit: headerRow, ...(styled ? { xSplit: Math.min(2, table.columns.length) } : {}) },
+    ];
   }
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }

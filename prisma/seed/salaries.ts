@@ -26,10 +26,12 @@ type NoveltyTypeSeed = {
   requiresQuantity?: boolean;
   quantityUnit?: string;
   generatedFrom?: NoveltyOrigin;
+  /** Columna en la planilla del contador (las mismas que pone la migración en las bases existentes). */
+  sheetColumn?: number;
 };
 
 const NOVELTY_TYPES: NoveltyTypeSeed[] = [
-  { name: "Adelanto", nature: "DESCUENTO", requiresAmount: true },
+  { name: "Adelanto", nature: "DESCUENTO", requiresAmount: true, sheetColumn: 4 },
   { name: "Bonificación", nature: "HABER", requiresAmount: true },
   { name: "Descuento", nature: "DESCUENTO", requiresAmount: true },
   {
@@ -38,8 +40,16 @@ const NOVELTY_TYPES: NoveltyTypeSeed[] = [
     requiresQuantity: true,
     quantityUnit: "horas",
     generatedFrom: "HORAS_EXTRAS",
+    sheetColumn: 2,
   },
-  { name: "Ausencia", nature: "INFORMATIVO", requiresQuantity: true, quantityUnit: "días", generatedFrom: "AUSENCIAS" },
+  {
+    name: "Ausencia",
+    nature: "INFORMATIVO",
+    requiresQuantity: true,
+    quantityUnit: "días",
+    generatedFrom: "AUSENCIAS",
+    sheetColumn: 1,
+  },
   {
     name: "Llegada tarde",
     nature: "INFORMATIVO",
@@ -52,6 +62,7 @@ const NOVELTY_TYPES: NoveltyTypeSeed[] = [
   { name: "Premio", nature: "HABER", requiresAmount: true },
   { name: "Sanción", nature: "INFORMATIVO" },
   { name: "Otro", nature: "INFORMATIVO" },
+  { name: "Vacaciones", nature: "INFORMATIVO", requiresQuantity: true, quantityUnit: "días", sheetColumn: 3 },
 ];
 
 /** Tipos de licencia que generan una novedad al aprobarse (solo al crear los tipos de novedad). */
@@ -59,6 +70,7 @@ const LEAVE_LINKS: Record<string, string> = {
   "Ausencia con aviso": "Ausencia",
   "Ausencia sin aviso": "Ausencia",
   "Suspensión disciplinaria": "Sanción",
+  Vacaciones: "Vacaciones",
 };
 
 const DAY = 86_400_000;
