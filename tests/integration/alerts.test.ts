@@ -1,6 +1,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import * as alerts from "@/features/alerts/service";
 import * as dashboard from "@/features/dashboard/service";
+import { listDocuments } from "@/features/documents/service";
+import { listExits } from "@/features/exits/service";
+import { listLeaves } from "@/features/leaves/service";
+import { listNovelties } from "@/features/novelties/service";
 import { periodKey, periodOf, todayInTimeZone, toIsoDate } from "@/lib/format";
 import type { ActorContext } from "@/server/context";
 import { db } from "@/server/db";
@@ -174,5 +178,169 @@ describe("inicio", () => {
     expect(after.lost - before.lost).toBe(1);
     expect(after.expected).toBe(before.expected);
     expect(toIsoDate(after.from)).toBe(toIsoDate(prev));
+  });
+});
+
+describe("inicio: para resolver", () => {
+  /** Total que muestra la lista a la que lleva el enlace de la fila. */
+  async function listTotal(ctx: ActorContext, href: string) {
+    const url = new URL(href, "http://localhost");
+    const query = Object.fromEntries(url.searchParams);
+    if (url.pathname === "/licencias") return (await listLeaves(ctx, query)).total;
+    if (url.pathname === "/egresos") return (await listExits(ctx, query)).total;
+    if (url.pathname === "/novedades") return (await listNovelties(ctx, query)).total;
+    if (url.pathname === "/documentacion") return (await listDocuments(ctx, query)).total;
+    throw new Error(`Sin lista para ${href}`);
+  }
+  const countOf = (tasks: dashboard.PendingTask[], key: string) => tasks.find((t) => t.key === key)?.count ?? 0;
+
+  it("cuenta lo pendiente y cada número coincide con la lista que abre", async () => {
+    // Puede adjuntar certificados y decidir solicitudes, pero no ve datos de salud.
+    const code = `SIN_SALUD_${tag}`.toUpperCase();
+    await db.role.create({
+      data: {
+        code,
+        name: `Sin salud ${tag}`,
+        permissions: {
+          create: [
+            "employee:read",
+            "leave:read",
+            "leave:write",
+            "leave:approve",
+            "document:read",
+            "document:write",
+          ].map((permission) => ({ permission })),
+        },
+      },
+    });
+    const noHealth = await actorFor((await createTestUser(code)).id);
+    const before = (await dashboard.getDashboard(rrhh, {})).tasks;
+    const limitedBefore = (await dashboard.getDashboard(noHealth, {})).tasks;
+
+    const worker = await createEmployee("Pendientes", { contractEndDate: null });
+    const user = (await db.user.findFirstOrThrow({ where: { id: rrhh.userId } })).id;
+    const withCertificate = await db.leaveType.create({
+      data: { name: `Enfermedad ${tag}`, class: "LICENCIA", countingMode: "CORRIDOS", requiresCertificate: true },
+    });
+    const sensitive = await db.leaveType.create({
+      data: {
+        name: `Tratamiento ${tag}`,
+        class: "LICENCIA",
+        countingMode: "CORRIDOS",
+        requiresCertificate: true,
+        isSensitive: true,
+      },
+    });
+    const leave = (leaveTypeId: string, status: "SOLICITADA" | "APROBADA") =>
+      db.leaveRecord.create({
+        data: {
+          employeeId: worker.id,
+          leaveTypeId,
+          startDate: today,
+          endDate: today,
+          days: 1,
+          status,
+          requestedById: user,
+        },
+      });
+    const certificateType = await db.documentType.create({ data: { name: `Certificado ${tag}` } });
+    const medicalType = await db.documentType.create({
+      data: { name: `Certificado médico ${tag}`, isSensitive: true },
+    });
+    const document = (documentTypeId: string, status: "PENDIENTE" | "OBSERVADO" | "ANULADO", leaveRecordId?: string) =>
+      db.document.create({ data: { employeeId: worker.id, documentTypeId, leaveRecordId, status } });
+
+    // Sin documento: falta el certificado.
+    await leave(withCertificate.id, "SOLICITADA");
+    await leave(sensitive.id, "APROBADA");
+    // Una solicitud reservada se cuenta para todos: la lista la muestra como dato reservado.
+    await leave(sensitive.id, "SOLICITADA");
+    // Un certificado pendiente de revisión igual cuenta como presentado (no está anulado).
+    await document(certificateType.id, "PENDIENTE", (await leave(withCertificate.id, "APROBADA")).id);
+    // Uno anulado no cubre la licencia.
+    await document(certificateType.id, "ANULADO", (await leave(withCertificate.id, "APROBADA")).id);
+    // Un documento reservado cubre la licencia solo para quien ve datos de salud.
+    await document(medicalType.id, "OBSERVADO", (await leave(withCertificate.id, "APROBADA")).id);
+    await document(certificateType.id, "OBSERVADO");
+
+    const lookup = (group: string, code: string) =>
+      db.lookupValue.upsert({
+        where: { group_code: { group, code } },
+        update: {},
+        create: { group, code, label: code },
+      });
+    const exit = async (employeeId: string, exitDate: Date) =>
+      db.employeeExit.create({
+        data: {
+          employeeId,
+          exitDate,
+          exitTypeId: (await lookup("TIPO_EGRESO", "RENUNCIA")).id,
+          exitReasonId: (await lookup("MOTIVO_EGRESO", "MUDANZA")).id,
+        },
+      });
+    await exit(worker.id, today);
+    // Con fecha futura todavía no hay nada que confirmar.
+    await exit((await createEmployee("Egreso futuro", { contractEndDate: null })).id, day(5));
+
+    const month = (offset: number) =>
+      periodOf(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + offset, 1)));
+    const noveltyType = await db.noveltyType.create({ data: { name: `Adelanto ${tag}`, nature: "DESCUENTO" } });
+    const novelty = (period: Date) =>
+      db.novelty.create({
+        data: { employeeId: worker.id, noveltyTypeId: noveltyType.id, date: period, period, createdById: user },
+      });
+    await novelty(month(-1));
+    // Los meses futuros no se muestran.
+    await novelty(month(1));
+
+    const after = (await dashboard.getDashboard(rrhh, {})).tasks;
+    const delta = (key: string) => countOf(after, key) - countOf(before, key);
+    expect(delta("solicitudes")).toBe(2);
+    // Las dos sin documento, la sensible y la del certificado anulado.
+    expect(delta("certificados")).toBe(4);
+    expect(delta("egresos")).toBe(1);
+    expect(delta(`novedades-${periodKey(month(-1))}`)).toBe(1);
+    expect(after.map((t) => t.key)).not.toContain(`novedades-${periodKey(month(1))}`);
+    expect(delta("documentos-pendientes")).toBe(1);
+    expect(delta("documentos-observados")).toBe(2);
+    for (const task of after) expect(await listTotal(rrhh, task.href), task.key).toBe(task.count);
+
+    // Sin permiso de datos de salud no cuentan la licencia sensible ni el documento
+    // reservado, y la licencia cubierta solo por ese documento sigue sin certificado.
+    const limited = (await dashboard.getDashboard(noHealth, {})).tasks;
+    const limitedDelta = (key: string) => countOf(limited, key) - countOf(limitedBefore, key);
+    expect(limitedDelta("solicitudes")).toBe(2);
+    expect(limitedDelta("certificados")).toBe(3);
+    expect(limitedDelta("documentos-pendientes")).toBe(1);
+    expect(limitedDelta("documentos-observados")).toBe(1);
+    for (const task of limited) expect(await listTotal(noHealth, task.href), task.key).toBe(task.count);
+    expect(limited.map((t) => t.key).filter((key) => /^(egresos|novedades)/.test(key))).toEqual([]);
+  });
+
+  it("los certificados se cuentan solo para quien puede adjuntarlos", async () => {
+    // Sin "Registrar licencias" no se puede adjuntar desde la lista.
+    const code = `SIN_ADJUNTAR_${tag}`.toUpperCase();
+    await db.role.create({
+      data: {
+        code,
+        name: `Sin adjuntar ${tag}`,
+        permissions: {
+          create: ["employee:read", "leave:read", "document:read", "document:write"].map((permission) => ({
+            permission,
+          })),
+        },
+      },
+    });
+    const reader = await actorFor((await createTestUser(code)).id);
+    expect(countOf((await dashboard.getDashboard(rrhh, {})).tasks, "certificados")).toBeGreaterThan(0);
+    const keys = (await dashboard.getDashboard(reader, {})).tasks.map((t) => t.key);
+    expect(keys).not.toContain("certificados");
+    expect(keys).not.toContain("solicitudes");
+  });
+
+  it("solo muestra lo que el rol puede resolver", async () => {
+    const administracion = await actorFor((await createTestUser("ADMINISTRACION")).id);
+    expect((await dashboard.getDashboard(administracion, {})).tasks).toEqual([]);
+    expect((await dashboard.getDashboard(consulta, {})).tasks).toEqual([]);
   });
 });

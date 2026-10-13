@@ -108,6 +108,8 @@ export const leaveListQuerySchema = baseListQuerySchema.extend({
   class: z.enum(LEAVE_CLASS_FILTERS).optional().catch(undefined),
   leaveTypeId: z.uuid().optional().catch(undefined),
   timing: z.enum(LEAVE_TIMING_FILTERS).optional().catch(undefined),
+  /** "falta" = el tipo pide certificado y no tiene ningún documento vinculado sin anular. */
+  certificado: z.enum(["falta"]).optional().catch(undefined),
   /** Registros que tocan el período desde–hasta. */
   desde: optionalIsoParam,
   hasta: optionalIsoParam,

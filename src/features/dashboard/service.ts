@@ -1,8 +1,17 @@
 import "server-only";
 import { alertOverview } from "@/features/alerts/service";
-import { workDaysOf } from "@/features/leaves/service";
+import { canAttachCertificate, workDaysOf } from "@/features/leaves/service";
 import { balanceUsage, holidaysBetween } from "@/features/leaves/repository";
-import { addMonths, parsePeriod, periodEnd, periodOf, todayInTimeZone } from "@/lib/format";
+import {
+  addMonths,
+  formatPeriod,
+  parsePeriod,
+  periodEnd,
+  periodKey,
+  periodOf,
+  todayInTimeZone,
+  toIsoDate,
+} from "@/lib/format";
 import { z } from "@/lib/zod";
 import { hasPermission } from "@/server/authz";
 import type { ActorContext } from "@/server/context";
@@ -32,12 +41,13 @@ export async function getDashboard(ctx: ActorContext, rawQuery: unknown = {}) {
 
   const can = (permission: Parameters<typeof hasPermission>[1]) => hasPermission(ctx, permission);
 
-  const [staff, movements, absence, leaves, alerts] = await Promise.all([
+  const [staff, movements, absence, leaves, alerts, tasks] = await Promise.all([
     can("employee:read") ? staffBlock(today) : null,
     can("employee:read") ? movementsBlock(start, end, can("exit:read")) : null,
     can("attendance:read") && can("leave:read") ? absenceBlock(start, measuredUntil) : null,
     can("leave:read") ? leavesBlock(today, can("document.sensitive:read")) : null,
     can("employee:read") ? alertOverview(ctx) : null,
+    tasksBlock(ctx, today, current),
   ]);
 
   return {
@@ -51,9 +61,71 @@ export async function getDashboard(ctx: ActorContext, rawQuery: unknown = {}) {
     absence,
     leaves,
     alerts,
+    tasks,
   };
 }
 export type Dashboard = Awaited<ReturnType<typeof getDashboard>>;
+
+export type PendingTask = { key: string; label: string; count: number; href: string };
+
+/**
+ * Lo que quien mira puede resolver: cada fila aparece solo con el permiso para
+ * actuar y lleva al listado filtrado que muestra exactamente esos registros.
+ * Sin permiso de datos de salud, las solicitudes de tipos reservados cuentan
+ * porque el listado también las muestra (como dato reservado), aunque solo las
+ * decide quien tiene ese permiso; los certificados y documentos reservados no
+ * cuentan. Las filas sin nada pendiente no se devuelven.
+ */
+async function tasksBlock(ctx: ActorContext, today: Date, currentPeriod: Date): Promise<PendingTask[]> {
+  const can = (permission: Parameters<typeof hasPermission>[1]) => hasPermission(ctx, permission);
+  const canSeeHealth = can("document.sensitive:read");
+  const [requests, certificates, exits, novelties, documents] = await Promise.all([
+    can("leave:read") && can("leave:approve") ? repo.leaveRequestsCount() : 0,
+    can("leave:read") && canAttachCertificate(ctx) ? repo.missingCertificatesCount(canSeeHealth) : 0,
+    can("exit:read") && can("exit:write") ? repo.dueExitsCount(today) : 0,
+    can("novelty:read") && can("novelty:write") ? repo.pendingNoveltiesByPeriod(currentPeriod) : [],
+    can("document:read") && can("document:write") ? repo.openDocumentsCount(canSeeHealth) : null,
+  ]);
+  const tasks: PendingTask[] = [
+    {
+      key: "solicitudes",
+      label: "Licencias y vacaciones por aprobar",
+      count: requests,
+      href: "/licencias?status=pendientes",
+    },
+    {
+      key: "certificados",
+      label: "Licencias sin certificado",
+      count: certificates,
+      href: "/licencias?certificado=falta",
+    },
+    {
+      key: "egresos",
+      label: "Egresos con fecha cumplida sin confirmar",
+      count: exits,
+      href: `/egresos?estado=en-tramite&hasta=${toIsoDate(today)}`,
+    },
+    ...novelties.map(({ period, count }) => ({
+      key: `novedades-${periodKey(period)}`,
+      label: `Novedades sin aprobar de ${formatPeriod(period)}`,
+      count,
+      href: `/novedades?estado=pendientes&periodo=${periodKey(period)}`,
+    })),
+    {
+      key: "documentos-pendientes",
+      label: "Documentos pendientes de presentar",
+      count: documents?.pending ?? 0,
+      href: "/documentacion?status=pendientes",
+    },
+    {
+      key: "documentos-observados",
+      label: "Documentos observados",
+      count: documents?.observed ?? 0,
+      href: "/documentacion?status=observados",
+    },
+  ];
+  return tasks.filter((t) => t.count > 0);
+}
 
 async function staffBlock(today: Date) {
   const [counts, active] = await Promise.all([repo.headcount(), repo.activeEmployees()]);

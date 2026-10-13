@@ -1,4 +1,5 @@
 import "server-only";
+import { missingCertificateWhere } from "@/features/leaves/repository";
 import { db } from "@/server/db";
 
 const employeeRef = { id: true, fileNumber: true, lastName: true, firstName: true } as const;
@@ -95,4 +96,50 @@ export async function vacationBalancesUpTo(year: number) {
     where: { year: { lte: year }, employee: { status: "ACTIVO" } },
     select: { id: true, employeeId: true, entitledDays: true, adjustmentDays: true, carriedOverDays: true },
   });
+}
+
+/* ----------------------------------------------------------------------------
+ * Para resolver: mismos criterios que los listados a los que llevan
+ * ------------------------------------------------------------------------- */
+
+/** Solicitudes de licencia o vacaciones sin decidir (/licencias?status=pendientes). */
+export async function leaveRequestsCount() {
+  return db.leaveRecord.count({ where: { status: "SOLICITADA" } });
+}
+
+/** Licencias vigentes a las que les falta el certificado (/licencias?certificado=falta). */
+export async function missingCertificatesCount(includeSensitive: boolean) {
+  return db.leaveRecord.count({
+    where: { AND: [{ status: { in: ["SOLICITADA", "APROBADA"] } }, missingCertificateWhere(includeSensitive)] },
+  });
+}
+
+/** Egresos en trámite cuya fecha ya llegó: se pueden confirmar. */
+export async function dueExitsCount(today: Date) {
+  return db.employeeExit.count({ where: { status: "EN_TRAMITE", exitDate: { lte: today } } });
+}
+
+/** Novedades sin aprobar por período, hasta el mes indicado. */
+export async function pendingNoveltiesByPeriod(upTo: Date) {
+  const rows = await db.novelty.groupBy({
+    by: ["period"],
+    where: { status: "PENDIENTE", period: { lte: upTo } },
+    _count: { _all: true },
+    orderBy: { period: "asc" },
+  });
+  return rows.map((r) => ({ period: r.period, count: r._count._all }));
+}
+
+/** Documentos pendientes de presentar y observados (sin los sensibles si no hay permiso). */
+export async function openDocumentsCount(includeSensitive: boolean) {
+  const rows = await db.document.groupBy({
+    by: ["status"],
+    where: {
+      status: { in: ["PENDIENTE", "OBSERVADO"] },
+      ...(includeSensitive ? {} : { documentType: { isSensitive: false } }),
+    },
+    _count: { _all: true },
+  });
+  const count = (status: string) => rows.find((r) => r.status === status)?._count._all ?? 0;
+  return { pending: count("PENDIENTE"), observed: count("OBSERVADO") };
 }
