@@ -20,3 +20,36 @@ export async function findCompanyName(): Promise<string | null> {
   const company = await db.company.findFirst({ select: { legalName: true, tradeName: true } });
   return company ? (company.tradeName ?? company.legalName) : null;
 }
+
+/* ----------------------------------------------------------------------------
+ * Puesta en marcha
+ * ------------------------------------------------------------------------- */
+
+export async function companyExists(): Promise<boolean> {
+  return (await db.company.count()) > 0;
+}
+
+export async function activeCatalogCounts() {
+  const where = { isActive: true };
+  const [departments, positions, workplaces, schedules] = await Promise.all([
+    db.department.count({ where }),
+    db.position.count({ where }),
+    db.workplace.count({ where }),
+    db.workSchedule.count({ where }),
+  ]);
+  return { departments, positions, workplaces, schedules };
+}
+
+export async function holidaysInYear(year: number) {
+  return db.holiday.count({
+    where: { date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
+  });
+}
+
+export async function activeUsersWithRole(roleCode: string) {
+  return db.user.count({ where: { isActive: true, role: { code: roleCode } } });
+}
+
+export async function employeesCount() {
+  return db.employee.count();
+}
