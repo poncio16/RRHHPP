@@ -305,7 +305,8 @@ async function exportLeaveList(
     { key: "empleado", label: "Empleado" },
     { key: "tipo", label: "Tipo" },
     ...(allClasses ? [{ key: "clase", label: "Clase" }] : []),
-    { key: "periodo", label: "Período de vacaciones", type: "int" as const },
+    // Es un año: sin tipo numérico, para que Excel no lo muestre como "2.030".
+    { key: "periodo", label: "Período de vacaciones" },
     { key: "desde", label: "Desde", type: "date" as const },
     { key: "hasta", label: "Hasta", type: "date" as const },
     { key: "dias", label: "Días", type: "int" as const },

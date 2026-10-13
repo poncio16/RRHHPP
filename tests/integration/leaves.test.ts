@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as leaves from "@/features/leaves/service";
 import { LEAVE_STATUS_LABELS, RESERVED_TYPE_LABEL } from "@/features/leaves/constants";
+import { getAuditEntry } from "@/features/audit/service";
 import { exportResource } from "@/features/reports/export";
 import * as vacations from "@/features/vacations/service";
 import type { ActorContext } from "@/server/context";
@@ -474,9 +475,36 @@ describe("exportación", () => {
     expect((await lastAudit({ userId: rrhh.userId }))?.entityType).toBe("Reporte");
   });
 
-  it("exportar pide además el permiso de exportar", async () => {
+  it("exportar pide ver licencias y además el permiso de exportar", async () => {
     // Consulta ve licencias pero no exporta.
     expect(await appErrorOf(exportResource(consulta, "licencias", query))).toBeInstanceOf(ForbiddenError);
     expect(await appErrorOf(exportResource(consulta, "listado-vacaciones", query))).toBeInstanceOf(ForbiddenError);
+    // Exporta, pero no ve licencias.
+    const code = `SOLO_EXPORTAR_${tag}`.toUpperCase();
+    await db.role.create({
+      data: { code, name: `Solo exportar ${tag}`, permissions: { create: [{ permission: "export:run" }] } },
+    });
+    const onlyExport = await actorFor((await createTestUser(code)).id);
+    expect(await appErrorOf(exportResource(onlyExport, "licencias", query))).toBeInstanceOf(ForbiddenError);
+    expect(await appErrorOf(exportResource(onlyExport, "listado-vacaciones", query))).toBeInstanceOf(ForbiddenError);
+  });
+
+  it("la auditoría muestra el listado, los filtros con sus nombres y el enlace a la pantalla", async () => {
+    const filters = { leaveTypeId: refs.study, status: "pendientes", class: "licencias", timing: "proximas" };
+    await exportResource(rrhh, "licencias", { ...filters, certificado: "falta", formato: "csv" });
+    const entry = await getAuditEntry(admin, (await lastAudit({ userId: rrhh.userId }))!.id);
+    expect(entry.record).toMatchObject({ href: "/licencias" });
+    const shown = entry.diff.map((r) => `${r.label}: ${r.after}`).join("\n");
+    expect(shown).toContain("Listado: Licencias y ausencias");
+    expect(shown).toContain(`Tipo de licencia o ausencia: Examen ${tag}`);
+    expect(shown).toContain("Estado: Pendientes de aprobación");
+    expect(shown).toContain("Clase: Licencias");
+    expect(shown).toContain("Momento: Próximas");
+    expect(shown).toContain("Certificado: Falta el certificado");
+
+    await exportResource(rrhh, "listado-vacaciones", { formato: "csv" });
+    const vacations = await getAuditEntry(admin, (await lastAudit({ userId: rrhh.userId }))!.id);
+    expect(vacations.record).toMatchObject({ href: "/vacaciones" });
+    expect(vacations.diff.map((r) => `${r.label}: ${r.after}`).join("\n")).toContain("Listado: Vacaciones");
   });
 });
