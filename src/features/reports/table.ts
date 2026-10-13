@@ -4,7 +4,8 @@
  * Excel solo cambian el formato.
  */
 
-export type ColumnType = "text" | "int" | "decimal" | "money" | "percent" | "date";
+/** `number`: sin separador de miles y con los decimales que tenga (legajo, horas semanales). */
+export type ColumnType = "text" | "int" | "number" | "decimal" | "money" | "percent" | "date";
 
 export type Column = { key: string; label: string; type?: ColumnType };
 
@@ -21,6 +22,11 @@ export type ReportTable = {
   totals?: Record<string, Cell>;
   /** Texto cuando no hay filas. */
   empty: string;
+  /**
+   * Excel con formato de planilla para enviar (la del contador): `heading`
+   * como único título, encabezado con fondo y bordes, y celdas con bordes.
+   */
+  sheet?: { heading: string };
 };
 
 export type ReportResult = {

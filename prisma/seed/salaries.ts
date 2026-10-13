@@ -26,10 +26,12 @@ type NoveltyTypeSeed = {
   requiresQuantity?: boolean;
   quantityUnit?: string;
   generatedFrom?: NoveltyOrigin;
+  /** Columna en la planilla del contador. */
+  sheetColumn?: number;
 };
 
 const NOVELTY_TYPES: NoveltyTypeSeed[] = [
-  { name: "Adelanto", nature: "DESCUENTO", requiresAmount: true },
+  { name: "Adelanto", nature: "DESCUENTO", requiresAmount: true, sheetColumn: 4 },
   { name: "Bonificación", nature: "HABER", requiresAmount: true },
   { name: "Descuento", nature: "DESCUENTO", requiresAmount: true },
   {
@@ -38,8 +40,16 @@ const NOVELTY_TYPES: NoveltyTypeSeed[] = [
     requiresQuantity: true,
     quantityUnit: "horas",
     generatedFrom: "HORAS_EXTRAS",
+    sheetColumn: 2,
   },
-  { name: "Ausencia", nature: "INFORMATIVO", requiresQuantity: true, quantityUnit: "días", generatedFrom: "AUSENCIAS" },
+  {
+    name: "Ausencia",
+    nature: "INFORMATIVO",
+    requiresQuantity: true,
+    quantityUnit: "días",
+    generatedFrom: "AUSENCIAS",
+    sheetColumn: 1,
+  },
   {
     name: "Llegada tarde",
     nature: "INFORMATIVO",
@@ -52,6 +62,7 @@ const NOVELTY_TYPES: NoveltyTypeSeed[] = [
   { name: "Premio", nature: "HABER", requiresAmount: true },
   { name: "Sanción", nature: "INFORMATIVO" },
   { name: "Otro", nature: "INFORMATIVO" },
+  { name: "Vacaciones", nature: "INFORMATIVO", requiresQuantity: true, quantityUnit: "días" },
 ];
 
 /** Tipos de licencia que generan una novedad al aprobarse (solo al crear los tipos de novedad). */
@@ -59,7 +70,11 @@ const LEAVE_LINKS: Record<string, string> = {
   "Ausencia con aviso": "Ausencia",
   "Ausencia sin aviso": "Ausencia",
   "Suspensión disciplinaria": "Sanción",
+  Vacaciones: "Vacaciones",
 };
+
+/** Columna en la planilla del contador de un tipo que solo se llena con su licencia: se pone si quedó vinculado. */
+const LINKED_SHEET_COLUMNS: Record<string, number> = { Vacaciones: 3 };
 
 const DAY = 86_400_000;
 const money = (n: number) => (Math.round(n / 100) * 100).toFixed(2);
@@ -104,6 +119,10 @@ export async function seedSalaryCatalog(
       data: { generatesNoveltyTypeId: type!.id },
     });
     leaveLinks += count;
+    const column = LINKED_SHEET_COLUMNS[noveltyType];
+    if (count > 0 && column !== undefined) {
+      await db.noveltyType.update({ where: { id: type!.id }, data: { sheetColumn: column } });
+    }
   }
   return { conceptTypes, noveltyTypes, leaveLinks };
 }

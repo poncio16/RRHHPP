@@ -45,6 +45,16 @@ function fieldSchema(field: CatalogField): z.ZodType {
           .max(field.max, `No puede superar ${field.max} días.`)
           .nullable(),
       );
+    case "position":
+      return z.preprocess(
+        (v) => (v === "" || v === undefined ? null : v),
+        z.coerce
+          .number("Ingresá un número entero.")
+          .int("Ingresá un número entero.")
+          .min(1, "Debe ser 1 o más.")
+          .max(field.max, `No puede superar ${field.max}.`)
+          .nullable(),
+      );
     case "choice": {
       const values = z.enum(field.options.map((o) => o.value) as [string, ...string[]], "Elegí una opción.");
       if (field.optional) return z.preprocess((v) => (v === "" || v === undefined ? null : v), values.nullable());

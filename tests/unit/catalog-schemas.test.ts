@@ -31,6 +31,15 @@ describe("esquemas de catálogos", () => {
     expect(hoursSchema.safeParse("169").success).toBe(false);
   });
 
+  it("la columna en la planilla del contador es opcional y va de 1 a 99", () => {
+    const schema = catalogItemSchema(CATALOGS["tipos-novedad"], "create");
+    const base = { name: "Premio", nature: "HABER", requiresAmount: true, requiresQuantity: false, quantityUnit: "" };
+    expect(schema.parse({ ...base, sheetColumn: "" })).toMatchObject({ sheetColumn: null });
+    expect(schema.parse({ ...base, sheetColumn: "3" })).toMatchObject({ sheetColumn: 3 });
+    for (const bad of ["0", "1.5", "100", "abc"])
+      expect(schema.safeParse({ ...base, sheetColumn: bad }).success).toBe(false);
+  });
+
   it("cada lista simple tiene un grupo distinto", () => {
     const groups = CATALOG_KEYS.map((k) => CATALOGS[k].lookupGroup).filter(Boolean);
     expect(new Set(groups).size).toBe(groups.length);
@@ -48,7 +57,7 @@ describe("idempotencia de los esquemas", () => {
             ? true
             : f.type === "hours"
               ? "40"
-              : f.type === "days"
+              : f.type === "days" || f.type === "position"
                 ? "30"
                 : f.type === "choice"
                   ? f.options[0]!.value

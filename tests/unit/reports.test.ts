@@ -117,4 +117,49 @@ describe("exportación", () => {
     expect(row.getCell(3).value).toBe(1234.5);
     expect(sheet.getRow(6).getCell(1).value).toBe(`'=HYPERLINK("x")`);
   });
+
+  it("el ancho de los números alcanza para el texto con formato (no sale ###)", async () => {
+    const wide: ReportTable = {
+      id: "w",
+      title: "Anchos",
+      columns: [
+        { key: "sueldo", label: "Sueldo", type: "money" },
+        { key: "horas", label: "Hs", type: "decimal" },
+        { key: "legajo", label: "Legajo", type: "number" },
+      ],
+      rows: [{ sueldo: 1_500_000, horas: 12_345.5, legajo: 7 }],
+      empty: "",
+    };
+    for (const styled of [false, true]) {
+      const shown = styled ? { ...wide, sheet: { heading: "Empresa" } } : wide;
+      const buffer = await reportToXlsx({ title: "R", filters: [], tables: [shown] }, [shown]);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer as never);
+      const sheet = workbook.worksheets[0]!;
+      expect(sheet.getColumn(1).width).toBeGreaterThanOrEqual("$ 1.500.000,00".length);
+      expect(sheet.getColumn(2).width).toBeGreaterThanOrEqual("12.345,50".length);
+    }
+  });
+
+  it("formato de planilla: título, encabezado con fondo y bordes, Arial y página apaisada", async () => {
+    const shown: ReportTable = { ...table, sheet: { heading: "Empresa Ficticia" } };
+    const buffer = await reportToXlsx({ title: "Reporte", filters: ["Filtro"], tables: [shown] }, [shown]);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as never);
+    const sheet = workbook.worksheets[0]!;
+    expect(sheet.getCell("A1").value).toBe("Empresa Ficticia");
+    expect(sheet.getCell("A1").font).toMatchObject({ bold: true, underline: true });
+    const header = sheet.getRow(4).getCell(2);
+    expect(header.fill).toMatchObject({ type: "pattern", pattern: "solid" });
+    expect(header.border?.top?.style).toBe("thin");
+    expect(sheet.getRow(5).getCell(1).font?.name).toBe("Arial");
+    expect(sheet.getRow(5).getCell(4).border?.right?.style).toBe("thin");
+    expect(sheet.pageSetup).toMatchObject({ orientation: "landscape", fitToWidth: 1 });
+    // Una tabla sin formato de planilla no cambia: título con el reporte y sin bordes.
+    const plain = await reportToXlsx({ title: "Reporte", filters: [], tables: [table] }, [table]);
+    const other = new ExcelJS.Workbook();
+    await other.xlsx.load(plain as never);
+    expect(other.worksheets[0]!.getCell("A1").value).toBe("Reporte — Tabla: prueba");
+    expect(other.worksheets[0]!.getRow(4).getCell(1).border).toBeUndefined();
+  });
 });

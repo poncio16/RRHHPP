@@ -2,7 +2,7 @@ import "server-only";
 import { exportAuditLog } from "@/features/audit/service";
 import { exportEmployeeList } from "@/features/employees/service";
 import { exportLeaves, exportVacations } from "@/features/leaves/service";
-import { exportNovelties } from "@/features/novelties/service";
+import { exportNovelties, exportNoveltySheet } from "@/features/novelties/service";
 import { toIsoDate, todayInTimeZone } from "@/lib/format";
 import { recordAudit } from "@/server/audit";
 import { assertPermission } from "@/server/authz";
@@ -19,6 +19,7 @@ const LISTS = {
   licencias: { module: "licencias", run: exportLeaves },
   "listado-vacaciones": { module: "vacaciones", run: exportVacations },
   novedades: { module: "novedades", run: exportNovelties },
+  "planilla-novedades": { module: "novedades", run: exportNoveltySheet },
   auditoria: { module: "auditoria", run: exportAuditLog },
 } as const satisfies Record<
   string,

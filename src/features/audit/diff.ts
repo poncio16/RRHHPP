@@ -94,6 +94,7 @@ const LIST_TITLES: Record<string, string> = {
   licencias: "Licencias y ausencias",
   "listado-vacaciones": "Vacaciones",
   novedades: "Novedades",
+  "planilla-novedades": "Planilla de novedades",
   auditoria: "Auditoría",
 };
 
