@@ -38,18 +38,16 @@ const columnKey = (measure: SheetMeasure, typeId: string) => `${measure}:${typeI
 export function noveltyColumns(types: readonly SheetType[]): Column[] {
   return types.flatMap((type) => {
     const measures = measuresOf(type);
-    return measures.map(
-      (measure): Column => ({
-        key: columnKey(measure, type.id),
-        label:
-          measures.length === 1
-            ? type.name
-            : measure === "quantity"
-              ? `${type.name} (${type.quantityUnit || "cantidad"})`
-              : `${type.name} ($)`,
-        type: measure === "amount" ? "money" : measure === "quantity" ? "decimal" : "int",
-      }),
-    );
+    return measures.map((measure): Column => ({
+      key: columnKey(measure, type.id),
+      label:
+        measures.length === 1
+          ? type.name
+          : measure === "quantity"
+            ? `${type.name} (${type.quantityUnit || "cantidad"})`
+            : `${type.name} ($)`,
+      type: measure === "amount" ? "money" : measure === "quantity" ? "decimal" : "int",
+    }));
   });
 }
 
