@@ -46,7 +46,7 @@ function fillNotice({ fill, notFinished, withoutSchedule }: ReturnType<typeof sc
   const parts = [
     fill.length > 0
       ? `${plural(fill.length, "Se completó 1 fila", "Se completaron {n} filas")} con el horario. Corregí lo distinto (ausencias, llegadas tarde, horas adicionales) y guardá la planilla.`
-      : "No quedan filas para completar con el horario.",
+      : "No hay filas para completar ahora.",
   ];
   if (notFinished > 0) {
     parts.push(
