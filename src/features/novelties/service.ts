@@ -31,7 +31,7 @@ import { getSetting } from "@/server/settings";
 import { isNoveltySource, NOVELTY_SOURCE_LABELS, NOVELTY_STATUS_LABELS, type NoveltyStatus } from "./constants";
 import { minutesToHours, planGeneration, type DesiredNovelty, type GeneratedNovelty } from "./generation";
 import * as repo from "./repository";
-import { noveltyColumns, noveltyTotals, type SheetType } from "./sheet";
+import { noveltyColumns, noveltyTotals, valuesAt, type SheetType } from "./sheet";
 import {
   annulNoveltySchema,
   bulkNoveltySchema,
@@ -196,9 +196,10 @@ export async function exportNovelties(ctx: ActorContext, rawQuery: unknown): Pro
 /**
  * Planilla de novedades para el contador: una fila por empleado con relación
  * laboral en el período y una columna por cada tipo de novedad que tenga
- * posición en el catálogo. Solo cuentan las aprobadas e informadas. El CUIL y
- * el básico vigente al último día del mes salen con sus permisos; los
- * importes de cambios de básico generados, como en la pantalla.
+ * posición en el catálogo. Solo cuentan las aprobadas e informadas.
+ * Categoría, jornada y básico son los vigentes el último día del mes; el
+ * ingreso es el actual del legajo. El CUIL y el básico salen con sus
+ * permisos; los importes de cambios de básico generados, como en la pantalla.
  */
 export async function exportNoveltySheet(ctx: ActorContext, rawQuery: unknown): Promise<ReportResult> {
   await assertPermission(ctx, "novelty:read", MODULE);
@@ -219,13 +220,32 @@ export async function exportNoveltySheet(ctx: ActorContext, rawQuery: unknown): 
     EXPORT_MAX_ROWS,
   );
   const ids = employees.map((e) => e.id);
-  const [novelties, pending, salaries, company, sector] = await Promise.all([
+  const [novelties, pending, salaries, company, sector, laterChanges] = await Promise.all([
     repo.sheetNovelties(period, typeIds, ids),
     repo.countSheetPending(period, typeIds, ids),
     canSeeSalary ? currentSalaries(ids, end) : null,
     findCompanyName(),
     parsed.sector ? repo.findDepartmentName(parsed.sector) : null,
+    repo.assignmentChangesAfter(ids, end),
   ]);
+  // Categoría, jornada y horario como estaban el último día del mes, igual que el básico.
+  const assignments = new Map(
+    employees.map((e) => [
+      e.id,
+      valuesAt(
+        { categoryId: e.categoryId, workdayTypeId: e.workdayTypeId, workScheduleId: e.workScheduleId },
+        laterChanges.filter((c) => c.employeeId === e.id),
+      ),
+    ]),
+  );
+  const assigned = [...assignments.values()];
+  const idsOf = (field: (typeof repo.SHEET_ASSIGNMENT_FIELDS)[number]) =>
+    assigned.map((a) => a[field]).filter((id): id is string => id !== null);
+  const labels = await repo.assignmentLabels({
+    categories: idsOf("categoryId"),
+    workdayTypes: idsOf("workdayTypeId"),
+    schedules: idsOf("workScheduleId"),
+  });
   // Un cambio de básico generado es un dato salarial: sin ese permiso su importe no suma.
   const reserved = (n: (typeof novelties)[number]) => !canSeeSalary && n.sourceType === "SALARY_HISTORY";
   const columnsOfTypes = noveltyColumns(types);
@@ -256,7 +276,7 @@ export async function exportNoveltySheet(ctx: ActorContext, rawQuery: unknown): 
     title: "Planilla de novedades",
     filters: [
       `Novedades de ${formatPeriod(period)}, aprobadas e informadas.`,
-      ...(parsed.sector ? [`Sector: ${sector ?? "inexistente"}`] : []),
+      ...(parsed.sector ? [`Sector: ${sector ?? "inexistente"} (el actual de cada empleado)`] : []),
       ...(parsed.q ? [`Búsqueda: ${parsed.q}`] : []),
       ...(pending > 0 ? [pendingLine] : []),
       ...(types.length === 0
@@ -281,13 +301,17 @@ export async function exportNoveltySheet(ctx: ActorContext, rawQuery: unknown): 
         sheet: { heading: company ?? "Planilla de novedades" },
         columns,
         rows: employees.map((e) => {
-          const weeklyHours = e.workdayType?.weeklyHours ?? e.workSchedule?.weeklyHours ?? null;
+          const at = assignments.get(e.id)!;
+          const weeklyHours =
+            (at.workdayTypeId && labels.workdayTypes.get(at.workdayTypeId)) ||
+            (at.workScheduleId && labels.schedules.get(at.workScheduleId)) ||
+            null;
           const basic = salaries?.get(e.id)?.current.basicSalary ?? null;
           return {
             legajo: e.fileNumber,
             nombre: fullName(e),
             ...(canSeePersonal ? { cuil: e.cuil } : {}),
-            categoria: e.category?.name ?? null,
+            categoria: (at.categoryId && labels.categories.get(at.categoryId)) || null,
             ingreso: e.hireDate,
             jornada: weeklyHours === null ? null : Number(weeklyHours.toString()),
             ...(canSeeSalary ? { sueldo: basic === null ? null : Number(basic.toString()) } : {}),

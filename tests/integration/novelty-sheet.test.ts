@@ -28,7 +28,10 @@ const type = {} as Record<
   "qty" | "amount" | "both" | "count" | "linked" | "inactiveUsed" | "inactiveUnused" | "noColumn" | "salary" | "first",
   string
 >;
-const emp = {} as Record<"ana" | "beto" | "before" | "after" | "left" | "late", { id: string; fileNumber: number }>;
+const emp = {} as Record<
+  "ana" | "beto" | "before" | "after" | "left" | "late" | "moved",
+  { id: string; fileNumber: number }
+>;
 
 let nextFile = 700_000 + Math.floor(Math.random() * 90_000);
 
@@ -154,6 +157,37 @@ beforeAll(async () => {
   emp.left = await createEmployee("Egresada", { hire: "2021-01-01", exit: "2025-06-10" });
   emp.late = await createEmployee("Tardía", { hire: "2025-07-10" });
 
+  // Cambios cargados después del cierre: la planilla de junio muestra lo que regía el 30/06.
+  const catOld = await db.category.create({ data: { name: `Planilla cat. junio ${tag}` } });
+  const catMid = await db.category.create({ data: { name: `Planilla cat. julio ${tag}` } });
+  const catNew = await db.category.create({ data: { name: `Planilla cat. agosto ${tag}` } });
+  const wdOther = await db.workdayType.create({ data: { name: `Planilla jornada mayo ${tag}`, weeklyHours: "30" } });
+  const wdNew = await db.workdayType.create({ data: { name: `Planilla jornada julio ${tag}`, weeklyHours: "40" } });
+  emp.moved = await createEmployee(
+    "Cambiada",
+    { hire: "2020-01-01" },
+    { categoryId: catNew.id, workdayTypeId: wdNew.id },
+  );
+  for (const [field, changeType, oldRefId, newRefId, effectiveDate] of [
+    ["categoryId", "CATEGORIA", catOld.id, catMid.id, "2025-07-01"],
+    ["categoryId", "CATEGORIA", catMid.id, catNew.id, "2025-08-01"],
+    ["workdayTypeId", "JORNADA", wdOther.id, null, "2025-06-15"],
+    ["workdayTypeId", "JORNADA", null, wdNew.id, "2025-07-20"],
+  ] as const) {
+    await db.employeeChangeHistory.create({
+      data: {
+        employeeId: emp.moved.id,
+        changeSetId: crypto.randomUUID(),
+        changeType,
+        field,
+        oldRefId,
+        newRefId,
+        effectiveDate: new Date(effectiveDate),
+        createdById: admin.id,
+      },
+    });
+  }
+
   for (const [effectiveDate, basicSalary] of [
     ["2025-01-01", "1000.00"],
     ["2025-06-15", "1200.00"],
@@ -208,7 +242,7 @@ describe("planilla de novedades para el contador", () => {
   it("una fila por empleado con relación laboral en el período, por legajo", async () => {
     const table = await sheetOf(rrhh);
     expect(table.rows.map((r) => r.legajo)).toEqual(
-      [emp.ana, emp.beto, emp.left, emp.late].map((e) => e.fileNumber).sort((a, b) => a - b),
+      [emp.ana, emp.beto, emp.left, emp.late, emp.moved].map((e) => e.fileNumber).sort((a, b) => a - b),
     );
     expect(rowOf(table, "before")).toBeUndefined();
     expect(rowOf(table, "after")).toBeUndefined();
@@ -240,6 +274,25 @@ describe("planilla de novedades para el contador", () => {
     // Sin jornada usa las horas del horario; sin básico queda vacío.
     expect(rowOf(table, "beto")).toMatchObject({ jornada: 22.5, sueldo: null, categoria: null });
     expect(rowOf(table, "left")).toMatchObject({ jornada: null });
+  });
+
+  it("categoría y jornada como estaban el último día del mes, aunque después cambiaron", async () => {
+    // Categoría: el primer cambio posterior dice cuál regía. Jornada: el 15/06 se quitó y recién en julio se
+    // asignó la actual, así que a fin de junio no tenía (ni horario).
+    expect(rowOf(await sheetOf(rrhh), "moved")).toMatchObject({
+      categoria: `Planilla cat. junio ${tag}`,
+      jornada: null,
+    });
+    // En agosto ya rige todo lo actual.
+    expect(rowOf(await sheetOf(rrhh, { periodo: "2025-08" }), "moved")).toMatchObject({
+      categoria: `Planilla cat. agosto ${tag}`,
+      jornada: 40,
+    });
+    // En julio, la categoría intermedia y la jornada asignada el 20/07.
+    expect(rowOf(await sheetOf(rrhh, { periodo: "2025-07" }), "moved")).toMatchObject({
+      categoria: `Planilla cat. julio ${tag}`,
+      jornada: 40,
+    });
   });
 
   it("columnas por tipo en su orden; suma aprobadas e informadas del período", async () => {
@@ -285,7 +338,7 @@ describe("planilla de novedades para el contador", () => {
   it("avisa las pendientes que no entran y aplica búsqueda y sector", async () => {
     const result = await novelties.exportNoveltySheet(rrhh, { periodo: PERIOD, sector: refs.department });
     expect(result.filters).toContain("Novedades de junio de 2025, aprobadas e informadas.");
-    expect(result.filters).toContain(`Sector: Planilla sector ${tag}`);
+    expect(result.filters).toContain(`Sector: Planilla sector ${tag} (el actual de cada empleado)`);
     expect(result.filters).toContain("Hay 1 novedad pendiente de aprobar en el período: no está en la planilla.");
 
     const byFile = await sheetOf(rrhh, { q: String(emp.beto.fileNumber) });
@@ -338,15 +391,17 @@ describe("planilla de novedades para el contador", () => {
     expect(label.alignment?.wrapText).toBe(true);
     const first = sheet.getRow(header + 1);
     expect(first.getCell(1).value).toBe(
-      Math.min(emp.ana.fileNumber, emp.beto.fileNumber, emp.left.fileNumber, emp.late.fileNumber),
+      Math.min(...[emp.ana, emp.beto, emp.left, emp.late, emp.moved].map((e) => e.fileNumber)),
     );
     expect(first.getCell(2).font?.name).toBe("Arial");
     expect(first.getCell(2).border?.left?.style).toBe("thin");
     expect(sheet.views[0]).toMatchObject({ state: "frozen", ySplit: header, xSplit: 2 });
+    expect(sheet.pageSetup).toMatchObject({ orientation: "landscape", fitToPage: true, fitToWidth: 1 });
+    expect(sheet.getCell("A2").font?.name).toBe("Arial");
 
     const audit = await lastAudit({ userId: rrhh.userId });
     expect(audit).toMatchObject({ action: "EXPORT", module: "novedades", entityType: "Listado" });
-    expect(audit?.after).toMatchObject({ recurso: "planilla-novedades", formato: "xlsx", filas: 4 });
+    expect(audit?.after).toMatchObject({ recurso: "planilla-novedades", formato: "xlsx", filas: 5 });
   });
 
   it("pide exportar y ver novedades", async () => {

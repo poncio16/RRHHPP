@@ -82,3 +82,22 @@ export function noveltyTotals(
     );
   };
 }
+
+/**
+ * Valores de referencia del legajo a una fecha: para cada campo, el valor
+ * anterior del primer cambio con fecha efectiva posterior (en orden) o, si no
+ * hubo ninguno, el actual.
+ */
+export function valuesAt<F extends string>(
+  current: Record<F, string | null>,
+  laterChanges: readonly { field: string; oldRefId: string | null }[],
+): Record<F, string | null> {
+  const result = { ...current };
+  const seen = new Set<string>();
+  for (const change of laterChanges) {
+    if (seen.has(change.field) || !(change.field in current)) continue;
+    seen.add(change.field);
+    result[change.field as F] = change.oldRefId;
+  }
+  return result;
+}

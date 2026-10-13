@@ -26,7 +26,7 @@ type NoveltyTypeSeed = {
   requiresQuantity?: boolean;
   quantityUnit?: string;
   generatedFrom?: NoveltyOrigin;
-  /** Columna en la planilla del contador (las mismas que pone la migración en las bases existentes). */
+  /** Columna en la planilla del contador. */
   sheetColumn?: number;
 };
 
@@ -62,7 +62,7 @@ const NOVELTY_TYPES: NoveltyTypeSeed[] = [
   { name: "Premio", nature: "HABER", requiresAmount: true },
   { name: "Sanción", nature: "INFORMATIVO" },
   { name: "Otro", nature: "INFORMATIVO" },
-  { name: "Vacaciones", nature: "INFORMATIVO", requiresQuantity: true, quantityUnit: "días", sheetColumn: 3 },
+  { name: "Vacaciones", nature: "INFORMATIVO", requiresQuantity: true, quantityUnit: "días" },
 ];
 
 /** Tipos de licencia que generan una novedad al aprobarse (solo al crear los tipos de novedad). */
@@ -72,6 +72,9 @@ const LEAVE_LINKS: Record<string, string> = {
   "Suspensión disciplinaria": "Sanción",
   Vacaciones: "Vacaciones",
 };
+
+/** Columna en la planilla del contador de un tipo que solo se llena con su licencia: se pone si quedó vinculado. */
+const LINKED_SHEET_COLUMNS: Record<string, number> = { Vacaciones: 3 };
 
 const DAY = 86_400_000;
 const money = (n: number) => (Math.round(n / 100) * 100).toFixed(2);
@@ -116,6 +119,10 @@ export async function seedSalaryCatalog(
       data: { generatesNoveltyTypeId: type!.id },
     });
     leaveLinks += count;
+    const column = LINKED_SHEET_COLUMNS[noveltyType];
+    if (count > 0 && column !== undefined) {
+      await db.noveltyType.update({ where: { id: type!.id }, data: { sheetColumn: column } });
+    }
   }
   return { conceptTypes, noveltyTypes, leaveLinks };
 }

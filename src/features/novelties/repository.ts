@@ -361,11 +361,41 @@ export async function sheetEmployees(
       firstName: true,
       cuil: true,
       hireDate: true,
-      category: { select: { name: true } },
-      workdayType: { select: { weeklyHours: true } },
-      workSchedule: { select: { weeklyHours: true } },
+      categoryId: true,
+      workdayTypeId: true,
+      workScheduleId: true,
     },
   });
+}
+
+/** Campos del legajo que la planilla muestra como estaban al cierre del mes. */
+export const SHEET_ASSIGNMENT_FIELDS = ["categoryId", "workdayTypeId", "workScheduleId"] as const;
+
+/**
+ * Cambios de categoría, jornada y horario con fecha efectiva posterior a
+ * `end`, del más antiguo al más nuevo: el valor anterior del primero de cada
+ * campo es el que regía ese día.
+ */
+export async function assignmentChangesAfter(employeeIds: string[], end: Date) {
+  return db.employeeChangeHistory.findMany({
+    where: { employeeId: { in: employeeIds }, field: { in: [...SHEET_ASSIGNMENT_FIELDS] }, effectiveDate: { gt: end } },
+    orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }],
+    select: { employeeId: true, field: true, oldRefId: true },
+  });
+}
+
+/** Nombre de las categorías y horas semanales de jornadas y horarios, también los inactivos. */
+export async function assignmentLabels(ids: { categories: string[]; workdayTypes: string[]; schedules: string[] }) {
+  const [categories, workdayTypes, schedules] = await Promise.all([
+    db.category.findMany({ where: { id: { in: ids.categories } }, select: { id: true, name: true } }),
+    db.workdayType.findMany({ where: { id: { in: ids.workdayTypes } }, select: { id: true, weeklyHours: true } }),
+    db.workSchedule.findMany({ where: { id: { in: ids.schedules } }, select: { id: true, weeklyHours: true } }),
+  ]);
+  return {
+    categories: new Map(categories.map((c) => [c.id, c.name])),
+    workdayTypes: new Map(workdayTypes.map((w) => [w.id, w.weeklyHours])),
+    schedules: new Map(schedules.map((w) => [w.id, w.weeklyHours])),
+  };
 }
 
 export async function sheetNovelties(period: Date, typeIds: string[], employeeIds: string[]) {

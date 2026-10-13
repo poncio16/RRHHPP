@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { measuresOf, noveltyColumns, noveltyTotals, type SheetType } from "@/features/novelties/sheet";
+import { measuresOf, noveltyColumns, noveltyTotals, valuesAt, type SheetType } from "@/features/novelties/sheet";
 
 const base: SheetType = {
   id: "t",
@@ -53,5 +53,21 @@ describe("columnas de la planilla del contador", () => {
     ]);
     expect(totals("e1")).toEqual({ "quantity:q": 1.25, "amount:m": 0.3, "count:n": 1 });
     expect(totals("e2")).toEqual({ "quantity:q": 0, "amount:m": 0, "count:n": 0 });
+  });
+
+  it("valores del legajo a una fecha: el anterior del primer cambio posterior, o el actual", () => {
+    const current = { categoryId: "c3", workdayTypeId: "w2", workScheduleId: null };
+    expect(
+      valuesAt(current, [
+        { field: "categoryId", oldRefId: "c1" },
+        { field: "categoryId", oldRefId: "c2" },
+        { field: "workScheduleId", oldRefId: "h1" },
+        { field: "otro", oldRefId: "x" },
+      ]),
+    ).toEqual({ categoryId: "c1", workdayTypeId: "w2", workScheduleId: "h1" });
+    expect(valuesAt(current, [{ field: "workdayTypeId", oldRefId: null }])).toEqual({
+      ...current,
+      workdayTypeId: null,
+    });
   });
 });

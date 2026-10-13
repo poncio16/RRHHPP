@@ -58,6 +58,29 @@ function sheetName(title: string, used: Set<string>): string {
   return name;
 }
 
+const shownNumber = (decimals: number) =>
+  new Intl.NumberFormat("es-AR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+const SHOWN = { int: shownNumber(0), decimal: shownNumber(2) };
+
+/** Largo del texto que muestra Excel con el formato de la columna, para que el ancho alcance (y no salga ###). */
+function shownLength(value: Cell | undefined, type: Column["type"]): number {
+  if (value === null || value === undefined) return 0;
+  if (value instanceof Date) return 10;
+  if (typeof value === "string") return value.length;
+  switch (type) {
+    case "int":
+      return SHOWN.int.format(value).length;
+    case "decimal":
+      return SHOWN.decimal.format(value).length;
+    case "money":
+      return SHOWN.decimal.format(value).length + 2;
+    case "percent":
+      return (value * 100).toFixed(1).length + 1;
+    default:
+      return String(value).length;
+  }
+}
+
 /* Planilla para enviar (`ReportTable.sheet`): Arial 8 con bordes finos y encabezado celeste, centrado y en varias líneas. */
 
 const SHEET_FONT = { name: "Arial", size: 8 };
@@ -112,7 +135,10 @@ export async function reportToXlsx(result: ReportResult, tables: ReportTable[]):
     sheet.addRow([safeText(table.sheet?.heading ?? `${result.title} — ${table.title}`)]).font = styled
       ? { name: SHEET_FONT.name, bold: true, underline: true, size: 11 }
       : { bold: true, size: 13 };
-    for (const line of [...(result.notice ? [result.notice] : []), ...result.filters]) sheet.addRow([safeText(line)]);
+    for (const line of [...(result.notice ? [result.notice] : []), ...result.filters]) {
+      const row = sheet.addRow([safeText(line)]);
+      if (styled) row.font = SHEET_FONT;
+    }
     sheet.addRow([]);
 
     const header = sheet.addRow(table.columns.map((c) => c.label));
@@ -131,17 +157,14 @@ export async function reportToXlsx(result: ReportResult, tables: ReportTable[]):
       if (format) column.numFmt = format;
       // En la planilla el encabezado va en varias líneas: alcanza con que entre su palabra más larga.
       const label = styled ? Math.max(...c.label.split(/\s+/).map((word) => word.length)) : c.label.length;
-      const longest = Math.max(
-        label,
-        ...table.rows.slice(0, 500).map((r) => {
-          const v = r[c.key];
-          return v instanceof Date ? 10 : v === null || v === undefined ? 0 : String(v).length;
-        }),
-      );
+      const longest = Math.max(label, ...table.rows.slice(0, 500).map((r) => shownLength(r[c.key], c.type)));
       column.width = Math.min(Math.max(longest + 2, 8), styled ? 40 : 50);
     });
-    if (styled)
+    if (styled) {
       header.height = headerHeight(table.columns.map((c, i) => [c.label, sheet.getColumn(i + 1).width ?? 10]));
+      // Impresa entra a lo ancho de una hoja apaisada.
+      sheet.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+    }
     sheet.views = [
       { state: "frozen", ySplit: headerRow, ...(styled ? { xSplit: Math.min(2, table.columns.length) } : {}) },
     ];
