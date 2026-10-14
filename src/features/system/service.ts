@@ -77,7 +77,7 @@ export async function getSetupChecklist(ctx: ActorContext, today: Date = todayIn
       admins,
       employees,
     },
-    { today, canCreateEmployee: access.newEmployee, canImport: access.importer },
+    { today, canCreateEmployee: access.newEmployee, canImport: access.importer, canCreateCatalogs: access.catalogs },
   );
   const title = setupTitle(steps);
   // Lo que el sistema no puede saber si ya se hizo: se le recuerda a quien

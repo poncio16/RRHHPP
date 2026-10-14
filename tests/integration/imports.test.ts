@@ -296,7 +296,7 @@ describe("importación de empleados", () => {
     });
     expect(await lastAudit({ entityId: id })).toMatchObject({
       action: "IMPORT",
-      message: `Importó 2 empleados desde "alta.csv" (1 filas sin importar) y dio de alta 3 valores nuevos en Catálogos.`,
+      message: `Importó 2 empleados desde "alta.csv" (1 fila sin importar) y dio de alta 3 valores nuevos en Catálogos.`,
     });
   });
 
@@ -343,6 +343,36 @@ describe("importación de empleados", () => {
     expect((await getImportJob(rrhh, id)).status).toBe("VALIDADO");
   });
 
+  it("si una fila falla al confirmar, tampoco quedan los valores nuevos de Catálogos", async () => {
+    const fresh = `Revertido ${tag}`;
+    const late = nextPerson();
+    const { id } = await validateImport(
+      rrhh,
+      csv([line("Primero", nextPerson(), { Sector: fresh }), line("Segundo", late, { Sector: fresh })]),
+    );
+    const planned = (await getImportJob(rrhh, id)).newItems[0]!;
+    // Alguien da de alta a la persona de la segunda fila antes de confirmar.
+    const model = (await imported())[0]!;
+    await db.employee.create({
+      data: {
+        ...Object.fromEntries(
+          Object.entries(model).filter(([k]) => !["id", "createdAt", "updatedAt", "version"].includes(k)),
+        ),
+        fileNumber: model.fileNumber + 600_000,
+        lastName: "Cargado",
+        ...late,
+      } as never,
+    });
+    const error = await errorOf(confirmImport(rrhh, id));
+    expect(error).toBeInstanceOf(ConflictError);
+    expect((error as Error).message).toMatch(/La fila 3 coincide con el legajo/);
+    // La primera fila y el sector ya se habían escrito en la transacción: no queda nada.
+    expect(await db.department.findUnique({ where: { id: planned.id } })).toBeNull();
+    expect(await db.auditLog.count({ where: { entityId: planned.id } })).toBe(0);
+    expect(await db.employee.count({ where: { firstName: `Primero ${tag}` } })).toBe(0);
+    expect((await getImportJob(rrhh, id)).status).toBe("VALIDADO");
+  });
+
   it("dos confirmaciones simultáneas crean una sola vez", async () => {
     const name = `Simultáneo ${tag}`;
     const { id } = await validateImport(rrhh, csv([line("Doble", nextPerson(), { Sector: name })]));
@@ -365,7 +395,7 @@ describe("importación de empleados", () => {
     const sectorColumn = (values.getRow(1).values as unknown[]).indexOf("Sector");
     expect(values.getColumn(sectorColumn).values).toContain(names.dept);
     const help = workbook.getWorksheet("Instrucciones")!.getColumn(1).values.map(String);
-    expect(help.some((text) => text.startsWith("Si un sector, puesto o establecimiento no figura"))).toBe(true);
+    expect(help.some((text) => text.startsWith("Si un sector, puesto o establecimiento no existe"))).toBe(true);
 
     // Completar una fila (con una fecha como fecha de Excel) y subirla.
     const person = nextPerson();

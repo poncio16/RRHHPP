@@ -258,7 +258,7 @@ describe("importación: valores nuevos de Catálogos", () => {
     ]);
   });
 
-  it("avisa de un valor existente parecido, que puede ser un error de tipeo", () => {
+  it("reconoce nombres parecidos, que pueden ser errores de tipeo", () => {
     expect(similarName("Administracion", ["Administración"])).toBe("Administración");
     expect(similarName("Adminstración", ["Ventas", "Administración"])).toBe("Administración");
     expect(similarName("Depositos", ["Depósito"])).toBe("Depósito");
@@ -266,8 +266,44 @@ describe("importación: valores nuevos de Catálogos", () => {
     expect(similarName("Logística", ["Administración", "Ventas"])).toBeUndefined();
     // En nombres cortos una letra distinta ya es otro nombre.
     expect(similarName("TI", ["TE"])).toBeUndefined();
-    const [planned] = planNewItems(sheet({ Sector: "Adminstracion" }), positions, admin, ids());
-    expect(planned).toMatchObject({ name: "Adminstracion", similar: "Administración" });
+    // Un número o una letra suelta distintos son a propósito.
+    expect(similarName("Sucursal 2", ["Sucursal 1"])).toBeUndefined();
+    expect(similarName("Local 10", ["Local 1"])).toBeUndefined();
+    expect(similarName("Turno B", ["Turno A"])).toBeUndefined();
+  });
+
+  it("avisa de los nuevos parecidos a uno existente o a otro nuevo del mismo archivo", () => {
+    const rows = sheet(
+      { Sector: "Adminstracion" },
+      { Sector: "RRHH" },
+      { Sector: "RR.HH." },
+      { Sector: "Planta 1" },
+      { Sector: "Planta 2" },
+    );
+    const planned = planNewItems(rows, positions, admin, ids());
+    const mapped = rows.map((r, i) => mapRow(i + 2, r.cells, positions, withNewItems(admin, planned)));
+    const { newItems } = attachNewItems(mapped, planned, admin.labels);
+    expect(newItems.map(({ name, similar }) => ({ name, similar }))).toEqual([
+      { name: "Adminstracion", similar: "Administración" },
+      { name: "RRHH", similar: undefined },
+      { name: "RR.HH.", similar: "RRHH" },
+      { name: "Planta 1", similar: undefined },
+      { name: "Planta 2", similar: undefined },
+    ]);
+  });
+
+  it("explica dónde se administra lo que no se encuentra", () => {
+    expect(mapRow(2, row({ Provincia: "Narnia" }), positions, admin).errors).toEqual([
+      'Provincia: "Narnia" no es una provincia (escribí el nombre o el código).',
+    ]);
+    const withSchedule = matchHeaders([...HEADERS, "Horario"]).positions;
+    const schedules: Lookups = { ...admin, inactive: { ...admin.inactive, horarios: new Set(["turno noche"]) } };
+    expect(mapRow(2, [...row(), "Turno noche"], withSchedule, schedules).errors).toEqual([
+      'Horario: "Turno noche" está desactivado en Configuración → Horarios.',
+    ]);
+    expect(mapRow(2, [...row(), "Turno tarde"], withSchedule, schedules).errors).toEqual([
+      'Horario: "Turno tarde" no existe en Configuración → Horarios.',
+    ]);
   });
 
   it("las filas usan el id planeado y solo se crean los que usa una fila válida", () => {
@@ -285,7 +321,7 @@ describe("importación: valores nuevos de Catálogos", () => {
     expect(mapped[0]!.input).toMatchObject({ departmentId: planned[0]!.id, positionId: planned[2]!.id });
     expect(mapped[1]!.input).toMatchObject({ departmentId: planned[0]!.id, positionId: ID.position });
 
-    const { rows: annotated, newItems } = attachNewItems(mapped, planned);
+    const { rows: annotated, newItems } = attachNewItems(mapped, planned, admin.labels);
     expect(newItems.map((i) => i.name)).toEqual(["Logística", "Chofer"]);
     expect(annotated.map((r) => r.notes)).toEqual([
       ["Sector nuevo: Logística", "Puesto nuevo: Chofer"],

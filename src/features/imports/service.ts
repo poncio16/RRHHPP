@@ -103,7 +103,7 @@ export async function validateImport(ctx: ActorContext, file: File | null) {
     cuils: mapped.map((r) => r.cuil).filter(Boolean),
     fileNumbers: mapped.flatMap((r) => (r.fileNumber ? [r.fileNumber] : [])),
   });
-  const { rows, newItems } = attachNewItems(markDuplicates(mapped, existing), planned);
+  const { rows, newItems } = attachNewItems(markDuplicates(mapped, existing), planned, lookups.labels);
   const validRows = rows.filter((r) => r.status === "VALIDA").length;
 
   return repo.createJob({
@@ -246,7 +246,7 @@ export async function confirmImport(ctx: ActorContext, id: string) {
             entityType: "ImportJob",
             entityId: id,
             after,
-            message: `Importó ${inserted.length} empleados desde "${job.fileName}" (${skipped} filas sin importar)${alsoCreated}.`,
+            message: `Importó ${plural(inserted.length, "empleado", "empleados")} desde "${job.fileName}" (${plural(skipped, "fila sin importar", "filas sin importar")})${alsoCreated}.`,
           },
           tx,
         );

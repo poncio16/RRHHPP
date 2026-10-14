@@ -125,8 +125,13 @@ function convert(column: ImportColumn, raw: string, lookups: Lookups): { value: 
   const id = lookups.options[key].get(normalizeKey(raw));
   if (id === null) return { value: null, error: `${column.header}: hay más de un valor activo llamado "${raw}".` };
   if (id) return { value: id };
+  if (key === "provincias") {
+    return { value: null, error: `${column.header}: "${raw}" no es una provincia (escribí el nombre o el código).` };
+  }
+  // Los horarios se administran en su propia pantalla; el resto, en Catálogos.
+  const where = key === "horarios" ? "Configuración → Horarios" : "Catálogos";
   if (lookups.inactive[key]?.has(normalizeKey(raw))) {
-    return { value: null, error: `${column.header}: "${raw}" está desactivado en Catálogos.` };
+    return { value: null, error: `${column.header}: "${raw}" está desactivado en ${where}.` };
   }
   // Si se podía dar de alta y no está entre los nuevos, es porque el nombre es demasiado largo.
   if (lookups.createsCatalogs && isCreatable(key)) {
@@ -135,7 +140,7 @@ function convert(column: ImportColumn, raw: string, lookups: Lookups): { value: 
       error: `${column.header}: "${raw}" no existe y no se puede dar de alta: el nombre puede tener hasta ${newNameMax(key)} caracteres.`,
     };
   }
-  return { value: null, error: `${column.header}: "${raw}" no existe en Catálogos.` };
+  return { value: null, error: `${column.header}: "${raw}" no existe en ${where}.` };
 }
 
 const LABELS = new Map(IMPORT_COLUMNS.map((c) => [c.field, c.header]));
@@ -171,15 +176,26 @@ function editDistance(a: string, b: string): number {
   return previous[b.length]!;
 }
 
+/** "Sucursal 1" y "Sucursal 2", o "Turno A" y "Turno B": nombres que difieren a propósito en un número o una letra suelta. */
+function numbered(a: string, b: string): boolean {
+  const left = normalizeKey(a).split(" ");
+  const right = normalizeKey(b).split(" ");
+  if (left.length !== right.length) return false;
+  const changed = left.flatMap((word, i) => (word === right[i] ? [] : [[word, right[i]!]]));
+  return changed.length === 1 && changed[0]!.every((word) => /^\d+$/.test(word) || word.length === 1);
+}
+
 /**
- * El valor existente más parecido a un nombre nuevo, si difiere solo en
- * espacios y signos, o en una letra (dos en nombres de 8 o más; ninguna en
- * los de menos de 4): probable error de tipeo, como "Deposito" por "Depósitos".
+ * El nombre más parecido a uno nuevo, si difiere solo en espacios y signos, o
+ * en una letra (dos en nombres de 8 o más; ninguna en los de menos de 4):
+ * probable error de tipeo, como "Deposito" por "Depósitos". No cuenta los
+ * que cambian solo en un número o una letra suelta, como "Sucursal 1" y "2".
  */
 export function similarName(name: string, existing: readonly string[]): string | undefined {
   const target = bare(name);
   let best: { label: string; distance: number } | undefined;
   for (const label of existing) {
+    if (numbered(name, label)) continue;
     const other = bare(label);
     const shorter = Math.min(target.length, other.length);
     const allowed = shorter >= 8 ? 2 : shorter >= 4 ? 1 : 0;
@@ -193,7 +209,8 @@ export function similarName(name: string, existing: readonly string[]): string |
  * Sectores, puestos y establecimientos del archivo que no existen, ni activos
  * ni desactivados: uno por nombre (sin distinguir mayúsculas ni acentos), con
  * el texto de la primera fila que lo usa. `newId` da el id con que se van a
- * crear. Vacío si quien importa no administra los catálogos.
+ * crear. Vacío si quien importa no administra los catálogos. El aviso de
+ * nombres parecidos lo agrega `attachNewItems`.
  */
 export function planNewItems(
   rows: readonly { cells: string[] }[],
@@ -212,8 +229,7 @@ export function planNewItems(
       if (name === "" || name.length > newNameMax(column.key)) continue;
       if (lookups.options[column.key].has(key) || lookups.inactive[column.key]?.has(key)) continue;
       if (planned.has(`${column.key}:${key}`)) continue;
-      const similar = similarName(name, lookups.labels[column.key] ?? []);
-      planned.set(`${column.key}:${key}`, { key: column.key, id: newId(), name, ...(similar ? { similar } : {}) });
+      planned.set(`${column.key}:${key}`, { key: column.key, id: newId(), name });
     }
   }
   return [...planned.values()];
@@ -229,9 +245,11 @@ export function withNewItems(lookups: Lookups, items: readonly NewCatalogItem[])
 
 /**
  * Anota en cada fila válida los valores nuevos que usa y devuelve solo los que
- * usa alguna: los de filas con errores o duplicadas no se crean.
+ * usa alguna (los de filas con errores o duplicadas no se crean), cada uno con
+ * el nombre parecido que haya entre los existentes o los nuevos anteriores:
+ * en una instalación nueva, "RRHH" y "RR.HH." en el mismo archivo.
  */
-export function attachNewItems(rows: ImportRow[], planned: readonly NewCatalogItem[]) {
+export function attachNewItems(rows: ImportRow[], planned: readonly NewCatalogItem[], labels: Lookups["labels"]) {
   const byId = new Map(planned.map((item) => [item.id, item]));
   const used = new Set<string>();
   const annotated = rows.map((row) => {
@@ -244,7 +262,15 @@ export function attachNewItems(rows: ImportRow[], planned: readonly NewCatalogIt
     });
     return notes.length > 0 ? { ...row, notes } : row;
   });
-  return { rows: annotated, newItems: planned.filter((item) => used.has(item.id)) };
+  const newItems = planned.filter((item) => used.has(item.id));
+  return {
+    rows: annotated,
+    newItems: newItems.map((item, i) => {
+      const earlier = newItems.slice(0, i).filter((other) => other.key === item.key);
+      const similar = similarName(item.name, [...(labels[item.key] ?? []), ...earlier.map((other) => other.name)]);
+      return similar ? { ...item, similar } : item;
+    }),
+  };
 }
 
 /** Una fila del archivo → datos del alta y errores en palabras, con el nombre de la columna. */

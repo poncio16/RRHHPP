@@ -48,9 +48,10 @@ export async function activeOptions(): Promise<Record<LookupKey, Option[]>> {
  * sectores, puestos y establecimientos que falten se dan de alta.
  */
 export async function loadLookups(createsCatalogs: boolean): Promise<Lookups> {
-  const [options, inactive, provinceCodes, supervisors, metadata] = await Promise.all([
+  const [options, inactive, inactiveSchedules, provinceCodes, supervisors, metadata] = await Promise.all([
     activeOptions(),
     Promise.all(CATALOG_LOOKUPS.map((key) => catalogs.listLabels(key, false))),
+    db.workSchedule.findMany({ where: { isActive: false }, select: { name: true } }),
     db.province.findMany({ select: { id: true, code: true } }),
     db.employee.findMany({ where: { status: "ACTIVO" }, select: { id: true, fileNumber: true } }),
     employees.formMetadata(),
@@ -62,7 +63,10 @@ export async function loadLookups(createsCatalogs: boolean): Promise<Lookups> {
   index.provincias = indexByName([...options.provincias, ...provinceCodes.map((p) => ({ id: p.id, label: p.code }))]);
   return {
     options: index,
-    inactive: Object.fromEntries(CATALOG_LOOKUPS.map((key, i) => [key, new Set(inactive[i]?.map(normalizeKey))])),
+    inactive: {
+      ...Object.fromEntries(CATALOG_LOOKUPS.map((key, i) => [key, new Set(inactive[i]?.map(normalizeKey))])),
+      horarios: new Set(inactiveSchedules.map((s) => normalizeKey(s.name))),
+    },
     labels: Object.fromEntries(CREATABLE_LOOKUPS.map((key) => [key, options[key].map((o) => o.label)])),
     createsCatalogs,
     supervisors: new Map(supervisors.map((e) => [e.fileNumber, e.id])),

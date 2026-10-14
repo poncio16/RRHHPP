@@ -40,7 +40,7 @@ export async function buildTemplate(
     "La importación solo da de alta legajos nuevos: si el DNI, el CUIL o el legajo ya existen, la fila se informa como duplicada y no se modifica nada.",
     ...(createsCatalogs
       ? [
-          "Si un sector, puesto o establecimiento no figura en la hoja Valores, se da de alta en Catálogos al confirmar, con el nombre tal como está escrito.",
+          "Si un sector, puesto o establecimiento no existe en Catálogos, se da de alta al confirmar, con el nombre tal como está escrito. Si existe pero está desactivado (por eso no figura en la hoja Valores), hay que reactivarlo en Catálogos antes de importar.",
         ]
       : []),
     "Antes de confirmar vas a ver una vista previa con los errores de cada fila.",

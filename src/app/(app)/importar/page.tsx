@@ -53,7 +53,7 @@ async function Content() {
             Completá la plantilla (una fila por empleado, sin cambiar los encabezados) y subila. Los catálogos se
             escriben por nombre, como figuran en la hoja Valores
             {canCreateCatalogItems(access.ctx)
-              ? "; los sectores, puestos y establecimientos que no estén se dan de alta al confirmar, y la vista previa los lista antes"
+              ? "; los sectores, puestos y establecimientos que no existan en Catálogos (ni desactivados) se dan de alta al confirmar, y la vista previa los lista antes"
               : ""}
             . Solo se crean legajos nuevos: si el DNI, el CUIL o el legajo ya existen, la fila queda como duplicada y no
             se modifica nada.

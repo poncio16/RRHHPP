@@ -55,7 +55,12 @@ const HOLIDAYS_DETAIL = "No vienen precargados porque cambian cada año.";
  */
 export function setupSteps(
   counts: SetupCounts,
-  { today, canCreateEmployee, canImport }: { today: Date; canCreateEmployee: boolean; canImport: boolean },
+  {
+    today,
+    canCreateEmployee,
+    canImport,
+    canCreateCatalogs,
+  }: { today: Date; canCreateEmployee: boolean; canImport: boolean; canCreateCatalogs: boolean },
 ): SetupStep[] {
   const year = today.getUTCFullYear();
   const steps: SetupStep[] = [];
@@ -113,10 +118,16 @@ export function setupSteps(
     ...(canCreateEmployee ? [{ label: "Cargar un legajo", href: "/empleados/nuevo" }] : []),
     ...(canImport ? [{ label: "Importar desde Excel", href: "/importar" }] : []),
   ];
+  // La importación da de alta los sectores, puestos y establecimientos que falten si quien importa administra los catálogos.
+  const personnelDetail = !(canImport && canCreateCatalogs)
+    ? "De a un legajo o con la planilla de importación. Antes hacen falta sectores, puestos y establecimientos."
+    : canCreateEmployee
+      ? "De a un legajo (antes hacen falta sectores, puestos y establecimientos) o con la planilla de importación, que da de alta los que falten."
+      : "Con la planilla de importación, que da de alta los sectores, puestos y establecimientos que falten.";
   add(counts.employees === 0 && personnelLinks.length > 0, {
     key: "personal",
     title: "Cargar el personal",
-    detail: "De a un legajo o con la planilla de importación. Antes hacen falta sectores, puestos y establecimientos.",
+    detail: personnelDetail,
     links: personnelLinks,
   });
   add(counts.admins !== null && counts.admins < 2, {
