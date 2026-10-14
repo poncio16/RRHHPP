@@ -591,17 +591,21 @@ export async function createEmployee(ctx: ActorContext, input: unknown) {
 /**
  * Alta de varios legajos en una sola transacción (importación): o se crean
  * todos o ninguno. Un error de una fila se informa con su número y corta el
- * alta. `afterInsert` corre en la misma transacción. Primero se crean las
- * filas con número de legajo propio, para que la numeración automática de las
- * demás no tome uno de esos números.
+ * alta. `beforeInsert` y `afterInsert` corren en la misma transacción, antes
+ * y después de las altas. Primero se crean las filas con número de legajo
+ * propio, para que la numeración automática de las demás no tome uno de esos
+ * números.
  */
 export async function createEmployeesBatch(
   ctx: ActorContext,
   rows: { rowNumber: number; input: unknown }[],
-  afterInsert: (
-    tx: Prisma.TransactionClient,
-    created: { rowNumber: number; id: string; fileNumber: number }[],
-  ) => Promise<void>,
+  hooks: {
+    beforeInsert?: (tx: Prisma.TransactionClient) => Promise<void>;
+    afterInsert: (
+      tx: Prisma.TransactionClient,
+      created: { rowNumber: number; id: string; fileNumber: number }[],
+    ) => Promise<void>;
+  },
 ) {
   await assertCanWrite(ctx);
   const parsed = rows.map((row) => {
@@ -612,6 +616,7 @@ export async function createEmployeesBatch(
     return { rowNumber: row.rowNumber, data: result.data };
   });
   return repo.transaction(async (tx) => {
+    await hooks.beforeInsert?.(tx);
     const created: { rowNumber: number; id: string; fileNumber: number }[] = [];
     const ordered = [...parsed.filter((r) => r.data.fileNumber), ...parsed.filter((r) => !r.data.fileNumber)];
     for (const { rowNumber, data } of ordered) {
@@ -637,7 +642,7 @@ export async function createEmployeesBatch(
       }
     }
     created.sort((a, b) => a.rowNumber - b.rowNumber);
-    await afterInsert(tx, created);
+    await hooks.afterInsert(tx, created);
     return created;
   }, 120_000);
 }

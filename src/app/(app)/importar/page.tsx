@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { IMPORT_MAX_BYTES, IMPORT_MAX_ROWS } from "@/features/imports/columns";
 import { UploadForm } from "@/features/imports/components/upload-form";
 import { JOB_STATUS } from "@/features/imports/constants";
-import { canImport, listImportJobs } from "@/features/imports/service";
+import { canCreateCatalogItems, canImport, listImportJobs } from "@/features/imports/service";
 import { formatDateTime } from "@/lib/format";
 import { requirePageAccess } from "@/server/auth/request";
 
@@ -51,8 +51,12 @@ async function Content() {
           <CardTitle>Subir archivo</CardTitle>
           <CardDescription>
             Completá la plantilla (una fila por empleado, sin cambiar los encabezados) y subila. Los catálogos se
-            escriben por nombre, como figuran en la hoja Valores. Solo se crean legajos nuevos: si el DNI, el CUIL o el
-            legajo ya existen, la fila queda como duplicada y no se modifica nada.
+            escriben por nombre, como figuran en la hoja Valores
+            {canCreateCatalogItems(access.ctx)
+              ? "; los sectores, puestos y establecimientos que no estén se dan de alta al confirmar, y la vista previa los lista antes"
+              : ""}
+            . Solo se crean legajos nuevos: si el DNI, el CUIL o el legajo ya existen, la fila queda como duplicada y no
+            se modifica nada.
           </CardDescription>
         </CardHeader>
         <CardContent>

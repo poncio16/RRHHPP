@@ -3,7 +3,7 @@ import * as catalogs from "@/features/catalogs/repository";
 import * as employees from "@/features/employees/repository";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db";
-import type { LookupKey } from "./columns";
+import { CREATABLE_LOOKUPS, normalizeKey, type CreatableLookup, type LookupKey } from "./columns";
 import { indexByName, type Lookups } from "./map";
 
 type Client = Prisma.TransactionClient | typeof db;
@@ -42,10 +42,15 @@ export async function activeOptions(): Promise<Record<LookupKey, Option[]>> {
   };
 }
 
-/** Catálogos activos indexados por nombre, superiores por legajo y relaciones entre catálogos. */
-export async function loadLookups(): Promise<Lookups> {
-  const [options, provinceCodes, supervisors, metadata] = await Promise.all([
+/**
+ * Catálogos activos indexados por nombre (y los nombres desactivados),
+ * superiores por legajo y relaciones entre catálogos. `createsCatalogs`: los
+ * sectores, puestos y establecimientos que falten se dan de alta.
+ */
+export async function loadLookups(createsCatalogs: boolean): Promise<Lookups> {
+  const [options, inactive, provinceCodes, supervisors, metadata] = await Promise.all([
     activeOptions(),
+    Promise.all(CATALOG_LOOKUPS.map((key) => catalogs.listLabels(key, false))),
     db.province.findMany({ select: { id: true, code: true } }),
     db.employee.findMany({ where: { status: "ACTIVO" }, select: { id: true, fileNumber: true } }),
     employees.formMetadata(),
@@ -57,6 +62,9 @@ export async function loadLookups(): Promise<Lookups> {
   index.provincias = indexByName([...options.provincias, ...provinceCodes.map((p) => ({ id: p.id, label: p.code }))]);
   return {
     options: index,
+    inactive: Object.fromEntries(CATALOG_LOOKUPS.map((key, i) => [key, new Set(inactive[i]?.map(normalizeKey))])),
+    labels: Object.fromEntries(CREATABLE_LOOKUPS.map((key) => [key, options[key].map((o) => o.label)])),
+    createsCatalogs,
     supervisors: new Map(supervisors.map((e) => [e.fileNumber, e.id])),
     contractTypesWithEndDate: new Set(metadata.contractTypesWithEndDate),
     categoryAgreement: new Map(Object.entries(metadata.categoryAgreement)),
@@ -100,6 +108,21 @@ export async function listJobs(take: number) {
       createdBy: { select: { name: true } },
     },
   });
+}
+
+/** Todos los nombres de un catálogo (activos o no), normalizados, leídos dentro de la transacción. */
+export async function catalogKeys(key: CreatableLookup, tx: Prisma.TransactionClient) {
+  return new Set((await catalogs.listLabels(key, undefined, tx)).map(normalizeKey));
+}
+
+/**
+ * Bloquea el lote hasta el fin de la transacción si sigue pendiente: otra
+ * confirmación simultánea espera y después lo encuentra cerrado. Devuelve
+ * false si otra operación ya lo cerró.
+ */
+export async function lockPendingJob(id: string, tx: Prisma.TransactionClient) {
+  const { count } = await tx.importJob.updateMany({ where: { id, status: "VALIDADO" }, data: { status: "VALIDADO" } });
+  return count === 1;
 }
 
 /** Cierra un lote solo si sigue pendiente: devuelve false si otra operación lo cerró antes. */

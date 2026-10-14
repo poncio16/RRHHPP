@@ -2,7 +2,18 @@ import { deflateRawSync } from "node:zlib";
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { IMPORT_COLUMNS, IMPORT_MAX_UNZIPPED_BYTES, normalizeKey } from "@/features/imports/columns";
-import { indexByName, mapRow, markDuplicates, matchHeaders, toIsoDate, type Lookups } from "@/features/imports/map";
+import {
+  attachNewItems,
+  indexByName,
+  mapRow,
+  markDuplicates,
+  matchHeaders,
+  planNewItems,
+  similarName,
+  toIsoDate,
+  withNewItems,
+  type Lookups,
+} from "@/features/imports/map";
 import { parseCsv, readSpreadsheet } from "@/features/imports/parse";
 import { checkZipSize } from "@/features/imports/zip";
 
@@ -51,6 +62,13 @@ const lookups: Lookups = {
     "obras-sociales": empty(),
     art: empty(),
   },
+  inactive: { sectores: new Set(["archivo"]) },
+  labels: {
+    sectores: ["Administración", "Depósito", "deposito"],
+    puestos: ["Analista"],
+    establecimientos: ["Casa central"],
+  },
+  createsCatalogs: false,
   supervisors: new Map([[15, ID.boss]]),
   contractTypesWithEndDate: new Set([ID.fixedTerm]),
   categoryAgreement: new Map([[ID.category, ID.agreement]]),
@@ -174,7 +192,7 @@ describe("importación: filas", () => {
         expect.stringMatching(/^CUIL: /),
         'Fecha de nacimiento: "31/02/1990" no es una fecha (usá dd/mm/aaaa).',
         "Sexo: usá F, M o X.",
-        'Sector: "Inexistente" no existe o está desactivado.',
+        'Sector: "Inexistente" no existe en Catálogos.',
         "Legajo del superior: no hay un empleado activo con legajo 999.",
       ]),
     );
@@ -194,6 +212,86 @@ describe("importación: filas", () => {
     expect(category.errors).toEqual(["Categoría: no corresponde al convenio indicado."]);
     const ok = mapRow(2, row({ Categoría: "Administrativo A", Convenio: "Comercio" }), positions, lookups);
     expect(ok.status).toBe("VALIDA");
+  });
+});
+
+describe("importación: valores nuevos de Catálogos", () => {
+  const admin: Lookups = { ...lookups, createsCatalogs: true };
+  const ids = () => {
+    let n = 0;
+    return () => `0190b000-0000-7000-8000-${String(++n).padStart(12, "0")}`;
+  };
+  const sheet = (...values: Partial<Record<string, string>>[]) => values.map((v) => ({ cells: row(v) }));
+
+  it("sin permiso para administrar catálogos no planea nada y lo que falta es un error", () => {
+    expect(planNewItems(sheet({ Sector: "Logística" }), positions, lookups, ids())).toEqual([]);
+    expect(mapRow(2, row({ Sector: "Archivo" }), positions, lookups).errors).toEqual([
+      'Sector: "Archivo" está desactivado en Catálogos.',
+    ]);
+  });
+
+  it("planea uno por nombre, sin distinguir mayúsculas ni acentos, ni los existentes o desactivados", () => {
+    const planned = planNewItems(
+      sheet(
+        { Sector: "Logística", Puesto: "Chofer" },
+        { Sector: "LOGISTICA", Puesto: "Analista", Establecimiento: "Depósito  Norte" },
+        { Sector: "archivo", Establecimiento: "Casa Central" },
+        { Sector: "" },
+      ),
+      positions,
+      admin,
+      ids(),
+    );
+    expect(planned.map(({ key, name }) => ({ key, name }))).toEqual([
+      { key: "sectores", name: "Logística" },
+      { key: "puestos", name: "Chofer" },
+      { key: "establecimientos", name: "Depósito Norte" },
+    ]);
+    expect(new Set(planned.map((p) => p.id)).size).toBe(3);
+  });
+
+  it("un nombre demasiado largo no se planea y la fila explica por qué", () => {
+    const long = "Sector ".repeat(20).trim();
+    expect(planNewItems(sheet({ Sector: long }), positions, admin, ids())).toEqual([]);
+    expect(mapRow(2, row({ Sector: long }), positions, admin).errors).toEqual([
+      `Sector: "${long}" no existe y no se puede dar de alta: el nombre puede tener hasta 120 caracteres.`,
+    ]);
+  });
+
+  it("avisa de un valor existente parecido, que puede ser un error de tipeo", () => {
+    expect(similarName("Administracion", ["Administración"])).toBe("Administración");
+    expect(similarName("Adminstración", ["Ventas", "Administración"])).toBe("Administración");
+    expect(similarName("Depositos", ["Depósito"])).toBe("Depósito");
+    expect(similarName("RR.HH.", ["RRHH"])).toBe("RRHH");
+    expect(similarName("Logística", ["Administración", "Ventas"])).toBeUndefined();
+    // En nombres cortos una letra distinta ya es otro nombre.
+    expect(similarName("TI", ["TE"])).toBeUndefined();
+    const [planned] = planNewItems(sheet({ Sector: "Adminstracion" }), positions, admin, ids());
+    expect(planned).toMatchObject({ name: "Adminstracion", similar: "Administración" });
+  });
+
+  it("las filas usan el id planeado y solo se crean los que usa una fila válida", () => {
+    const rows = sheet(
+      { Sector: "Logística", Puesto: "Chofer" },
+      { Sector: "logistica" },
+      { Sector: "Calidad", DNI: "123" },
+    );
+    const planned = planNewItems(rows, positions, admin, ids());
+    const withPlanned = withNewItems(admin, planned);
+    // Los catálogos originales no cambian.
+    expect(admin.options.sectores.has("logistica")).toBe(false);
+    const mapped = rows.map((r, i) => mapRow(i + 2, r.cells, positions, withPlanned));
+    expect(mapped.map((r) => r.status)).toEqual(["VALIDA", "VALIDA", "ERROR"]);
+    expect(mapped[0]!.input).toMatchObject({ departmentId: planned[0]!.id, positionId: planned[2]!.id });
+    expect(mapped[1]!.input).toMatchObject({ departmentId: planned[0]!.id, positionId: ID.position });
+
+    const { rows: annotated, newItems } = attachNewItems(mapped, planned);
+    expect(newItems.map((i) => i.name)).toEqual(["Logística", "Chofer"]);
+    expect(annotated.map((r) => r.notes)).toEqual([
+      ["Sector nuevo: Logística", "Puesto nuevo: Chofer"],
+      ["Sector nuevo: Logística"],
+      undefined,
+    ]);
   });
 });
 

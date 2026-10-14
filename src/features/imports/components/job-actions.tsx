@@ -7,8 +7,23 @@ import { ConfirmDialog } from "@/components/feedback/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { confirmImportAction, discardImportAction } from "../actions";
 
-/** Confirmar (crea los legajos de las filas válidas) o descartar el lote. */
-export function JobActions({ id, valid, skipped }: { id: string; valid: number; skipped: number }) {
+/**
+ * Confirmar (crea los legajos de las filas válidas y los valores nuevos de
+ * Catálogos) o descartar el lote. `blocked`: quien mira no puede confirmarlo.
+ */
+export function JobActions({
+  id,
+  valid,
+  skipped,
+  newItems,
+  blocked = false,
+}: {
+  id: string;
+  valid: number;
+  skipped: number;
+  newItems: number;
+  blocked?: boolean;
+}) {
   const router = useRouter();
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -16,7 +31,7 @@ export function JobActions({ id, valid, skipped }: { id: string; valid: number; 
     <div className="flex flex-wrap gap-2">
       <ConfirmDialog
         trigger={
-          <Button disabled={valid === 0}>
+          <Button disabled={valid === 0 || blocked}>
             <Check />
             Importar {plural(valid, "legajo", "legajos")}
           </Button>
@@ -24,7 +39,11 @@ export function JobActions({ id, valid, skipped }: { id: string; valid: number; 
         title="Confirmar la importación"
         description={
           <>
-            <p>Se van a dar de alta {plural(valid, "legajo nuevo", "legajos nuevos")}, todos juntos o ninguno.</p>
+            <p>
+              {newItems > 0
+                ? `Se van a dar de alta ${plural(valid, "legajo nuevo", "legajos nuevos")} y ${plural(newItems, "valor nuevo", "valores nuevos")} en Catálogos, todo junto o nada.`
+                : `Se van a dar de alta ${plural(valid, "legajo nuevo", "legajos nuevos")}, todos juntos o ninguno.`}
+            </p>
             {skipped > 0 && (
               <p className="mt-2">
                 {plural(
@@ -41,7 +60,12 @@ export function JobActions({ id, valid, skipped }: { id: string; valid: number; 
         onConfirm={async () => {
           const result = await confirmImportAction(id);
           if (!result.ok) return result.error.message;
-          toast.success(`Se ${result.data.created === 1 ? "creó 1 legajo" : `crearon ${result.data.created} legajos`}`);
+          const { created, catalogItems } = result.data;
+          toast.success(
+            `Se ${created === 1 ? "creó 1 legajo" : `crearon ${created} legajos`}${
+              catalogItems > 0 ? ` y ${plural(catalogItems, "valor nuevo", "valores nuevos")} en Catálogos` : ""
+            }`,
+          );
           router.refresh();
         }}
       />

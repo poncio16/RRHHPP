@@ -145,7 +145,7 @@ Seguí la sección 4. Sin HTTPS no se puede iniciar sesión: la cookie de sesió
 7. **Usuarios y permisos**: creá un usuario con nombre para cada persona (nunca cuentas compartidas) y un **segundo Administrador**, para no depender de una sola cuenta.
 8. Programá los backups (sección 6) y hacé una primera prueba de restauración (sección 8).
 
-Para cargar el personal existente podés usar **Importar** con la plantilla de Excel.
+Para cargar el personal existente podés usar **Importar** con la plantilla de Excel. Los sectores, puestos y establecimientos que todavía no cargaste se dan de alta al confirmar la importación (la vista previa los lista antes); después completá sus datos en Catálogos, como en el paso 5.
 
 Mientras falte algo, el **Inicio** muestra la tarjeta "Puesta en marcha" con los pasos que el sistema puede verificar (empresa, sectores, puestos, establecimientos, horarios, feriados del año, el primer legajo y el segundo administrador), cada uno a quien tiene permiso para hacerlo. Los parámetros y la revisión con el asesor no se pueden verificar desde la aplicación: mientras dure la puesta en marcha, la tarjeta solo se los recuerda al administrador. Los backups se controlan en el servidor (sección 6). Cerca de fin de año (30 días antes del 1 de enero por defecto, se cambia en Parámetros → Alertas) también pide los feriados del año siguiente. Si solo faltan feriados, la tarjeta se llama "Configuración pendiente".
 

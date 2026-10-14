@@ -6,8 +6,13 @@ import { IMPORT_COLUMNS, IMPORT_MAX_ROWS, type LookupKey } from "./columns";
  * Plantilla Excel: hoja "Empleados" con los encabezados (obligatorios en
  * negrita), "Instrucciones" con el formato de cada columna y "Valores" con los
  * nombres activos de cada catálogo, tal como hay que escribirlos.
+ * `createsCatalogs`: quien la baja puede dar de alta sectores, puestos y
+ * establecimientos al importar.
  */
-export async function buildTemplate(values: Record<LookupKey, string[]>): Promise<Buffer> {
+export async function buildTemplate(
+  values: Record<LookupKey, string[]>,
+  { createsCatalogs }: { createsCatalogs: boolean },
+): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "RRHHPP";
   workbook.created = new Date();
@@ -33,6 +38,11 @@ export async function buildTemplate(values: Record<LookupKey, string[]>): Promis
     "Completá una fila por empleado en la hoja Empleados, sin cambiar los encabezados. Las columnas resaltadas son obligatorias.",
     `Hasta ${IMPORT_MAX_ROWS} filas por archivo. También se acepta CSV con los mismos encabezados.`,
     "La importación solo da de alta legajos nuevos: si el DNI, el CUIL o el legajo ya existen, la fila se informa como duplicada y no se modifica nada.",
+    ...(createsCatalogs
+      ? [
+          "Si un sector, puesto o establecimiento no figura en la hoja Valores, se da de alta en Catálogos al confirmar, con el nombre tal como está escrito.",
+        ]
+      : []),
     "Antes de confirmar vas a ver una vista previa con los errores de cada fila.",
   ]) {
     help.addRow([line]);

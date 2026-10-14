@@ -223,6 +223,16 @@ export async function listOptions(key: CatalogKey, includeIds: string[] = []) {
   return rows.map((row) => ({ id: row.id, label: String(row[table.labelField]), isActive: row.isActive }));
 }
 
+/** Nombres de un catálogo: todos, o solo los activos o los desactivados. */
+export async function listLabels(key: CatalogKey, isActive?: boolean, client: Client = db) {
+  const table = TABLES[key];
+  const rows = await table.delegate(client).findMany({
+    where: { ...table.scope, ...(isActive === undefined ? {} : { isActive }) },
+    select: { [table.labelField]: true },
+  });
+  return rows.map((row) => String(row[table.labelField]));
+}
+
 export async function listProvinceOptions() {
   const rows = await db.province.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } });
   return rows.map((row) => ({ id: row.id, label: row.name, isActive: true }));

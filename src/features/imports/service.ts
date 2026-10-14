@@ -1,20 +1,36 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
+import { CATALOGS } from "@/features/catalogs/definitions";
+import { createNamedCatalogItem } from "@/features/catalogs/service";
 import { createEmployeesBatch } from "@/features/employees/service";
 import type { Prisma } from "@/generated/prisma/client";
 import { recordAudit } from "@/server/audit";
 import { assertPermission, hasPermission } from "@/server/authz";
 import type { ActorContext } from "@/server/context";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
-import { IMPORT_MAX_BYTES, IMPORT_MAX_ROWS, type LookupKey } from "./columns";
-import { mapRow, markDuplicates, matchHeaders, type ImportRow } from "./map";
+import { CREATABLE_LOOKUPS, IMPORT_MAX_BYTES, IMPORT_MAX_ROWS, normalizeKey, type LookupKey } from "./columns";
+import {
+  attachNewItems,
+  mapRow,
+  markDuplicates,
+  matchHeaders,
+  planNewItems,
+  withNewItems,
+  type ImportRow,
+  type NewCatalogItem,
+} from "./map";
 import { readSpreadsheet } from "./parse";
 import * as repo from "./repository";
 import { buildTemplate } from "./template";
 
 const MODULE = "importacion";
 
-/** Contenido de `ImportJob.rows`: las filas y las columnas del archivo que no se reconocieron. */
-type JobContent = { ignoredColumns: string[]; rows: ImportRow[] };
+/**
+ * Contenido de `ImportJob.rows`: las filas, las columnas del archivo que no se
+ * reconocieron y los valores de Catálogos que se dan de alta al confirmar
+ * (los lotes anteriores a esto no los tienen).
+ */
+type JobContent = { ignoredColumns: string[]; rows: ImportRow[]; newItems?: NewCatalogItem[] };
 const toJson = (content: JobContent) => content as unknown as Prisma.InputJsonValue;
 const fromJson = (value: Prisma.JsonValue) => value as unknown as JobContent;
 
@@ -36,11 +52,19 @@ async function assertCanImport(ctx: ActorContext) {
   await assertPermission(ctx, "employee.personal:read", MODULE);
 }
 
+/**
+ * Los sectores, puestos y establecimientos que no existen se dan de alta al
+ * confirmar si quien importa también administra los catálogos.
+ */
+export function canCreateCatalogItems(ctx: ActorContext) {
+  return hasPermission(ctx, "config:catalogs");
+}
+
 export async function getTemplate(ctx: ActorContext) {
   await assertCanImport(ctx);
   const options = await repo.activeOptions();
   const names = Object.fromEntries(Object.entries(options).map(([key, list]) => [key, list.map((o) => o.label)]));
-  return buildTemplate(names as Record<LookupKey, string[]>);
+  return buildTemplate(names as Record<LookupKey, string[]>, { createsCatalogs: canCreateCatalogItems(ctx) });
 }
 
 /**
@@ -70,14 +94,16 @@ export async function validateImport(ctx: ActorContext, file: File | null) {
     );
   }
 
-  const lookups = await repo.loadLookups();
-  const mapped = sheet.rows.map((row) => mapRow(row.rowNumber, row.cells, positions, lookups));
+  const lookups = await repo.loadLookups(canCreateCatalogItems(ctx));
+  const planned = planNewItems(sheet.rows, positions, lookups, randomUUID);
+  const withPlanned = withNewItems(lookups, planned);
+  const mapped = sheet.rows.map((row) => mapRow(row.rowNumber, row.cells, positions, withPlanned));
   const existing = await repo.findExistingIdentities({
     dnis: mapped.map((r) => r.dni).filter(Boolean),
     cuils: mapped.map((r) => r.cuil).filter(Boolean),
     fileNumbers: mapped.flatMap((r) => (r.fileNumber ? [r.fileNumber] : [])),
   });
-  const rows = markDuplicates(mapped, existing);
+  const { rows, newItems } = attachNewItems(markDuplicates(mapped, existing), planned);
   const validRows = rows.filter((r) => r.status === "VALIDA").length;
 
   return repo.createJob({
@@ -86,7 +112,7 @@ export async function validateImport(ctx: ActorContext, file: File | null) {
     totalRows: rows.length,
     validRows,
     errorRows: rows.length - validRows,
-    rows: toJson({ ignoredColumns: unknown, rows }),
+    rows: toJson({ ignoredColumns: unknown, rows, newItems }),
     createdById: ctx.userId,
   });
 }
@@ -109,7 +135,13 @@ export async function getImportJob(ctx: ActorContext, id: string) {
     void _input;
     return row;
   });
-  return { ...job, rows, ignoredColumns: content.ignoredColumns, summary: summary(rows) };
+  return {
+    ...job,
+    rows,
+    ignoredColumns: content.ignoredColumns,
+    newItems: content.newItems ?? [],
+    summary: summary(rows),
+  };
 }
 
 export async function listImportJobs(ctx: ActorContext) {
@@ -127,9 +159,38 @@ function closedRows(rows: ImportRow[], created: Map<number, number> = new Map())
 }
 
 /**
+ * Da de alta los valores nuevos de Catálogos, con el id que ya usan las filas.
+ * Si mientras tanto alguien cargó uno con el mismo nombre, no se crea nada.
+ */
+async function createNewItems(
+  ctx: ActorContext,
+  items: NewCatalogItem[],
+  fileName: string,
+  tx: Prisma.TransactionClient,
+) {
+  for (const key of CREATABLE_LOOKUPS) {
+    const own = items.filter((item) => item.key === key);
+    if (own.length === 0) continue;
+    const taken = await repo.catalogKeys(key, tx);
+    const clash = own.find((item) => taken.has(normalizeKey(item.name)));
+    if (clash) {
+      throw new ConflictError(
+        `Mientras tanto se cargó "${clash.name}" en ${CATALOGS[key].title}. Descartá esta importación y volvé a subir el archivo.`,
+      );
+    }
+  }
+  for (const item of items) {
+    await createNamedCatalogItem(ctx, item.key, item, `importación de "${fileName}"`, tx);
+  }
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
  * Crea los legajos de las filas válidas en una sola transacción, con su
- * auditoría, y cierra el lote. Si algo cambió desde la validación (un
- * duplicado nuevo, un catálogo desactivado) no se crea ninguno.
+ * auditoría, y cierra el lote. Antes da de alta los sectores, puestos y
+ * establecimientos nuevos. Si algo cambió desde la validación (un duplicado
+ * nuevo, un catálogo desactivado o cargado) no se crea nada.
  */
 export async function confirmImport(ctx: ActorContext, id: string) {
   await assertCanImport(ctx);
@@ -140,38 +201,59 @@ export async function confirmImport(ctx: ActorContext, id: string) {
   const rows = content.rows;
   const valid = rows.filter((r) => r.status === "VALIDA" && r.input);
   if (valid.length === 0) throw new ConflictError("No hay filas válidas para importar.");
+  const newItems = content.newItems ?? [];
+  if (newItems.length > 0) await assertPermission(ctx, "config:catalogs", MODULE);
 
   const created = await createEmployeesBatch(
     ctx,
     valid.map((r) => ({ rowNumber: r.rowNumber, input: r.input })),
-    async (tx, inserted) => {
-      const byRow = new Map(inserted.map((c) => [c.rowNumber, c.fileNumber]));
-      const closed = await repo.closeJob(
-        id,
-        {
-          status: "CONFIRMADO",
-          rows: toJson({ ...content, rows: closedRows(rows, byRow) }),
-          confirmedAt: new Date(),
-        },
-        tx,
-      );
-      if (!closed) throw new ConflictError("Esta importación ya fue confirmada o descartada.");
-      const skipped = rows.length - valid.length;
-      await recordAudit(
-        ctx,
-        {
-          action: "IMPORT",
-          module: MODULE,
-          entityType: "ImportJob",
-          entityId: id,
-          after: { fileName: job.fileName, totalRows: rows.length, created: inserted.length, skipped },
-          message: `Importó ${inserted.length} empleados desde "${job.fileName}" (${skipped} filas sin importar).`,
-        },
-        tx,
-      );
+    {
+      beforeInsert: async (tx) => {
+        if (!(await repo.lockPendingJob(id, tx))) {
+          throw new ConflictError("Esta importación ya fue confirmada o descartada.");
+        }
+        await createNewItems(ctx, newItems, job.fileName, tx);
+      },
+      afterInsert: async (tx, inserted) => {
+        const byRow = new Map(inserted.map((c) => [c.rowNumber, c.fileNumber]));
+        const closed = await repo.closeJob(
+          id,
+          {
+            status: "CONFIRMADO",
+            rows: toJson({ ...content, rows: closedRows(rows, byRow) }),
+            confirmedAt: new Date(),
+          },
+          tx,
+        );
+        if (!closed) throw new ConflictError("Esta importación ya fue confirmada o descartada.");
+        const skipped = rows.length - valid.length;
+        const after: Record<string, string | number> = {
+          fileName: job.fileName,
+          totalRows: rows.length,
+          created: inserted.length,
+          skipped,
+        };
+        if (newItems.length > 0) after.catalogItems = newItems.length;
+        const alsoCreated =
+          newItems.length > 0
+            ? ` y dio de alta ${plural(newItems.length, "valor nuevo", "valores nuevos")} en Catálogos`
+            : "";
+        await recordAudit(
+          ctx,
+          {
+            action: "IMPORT",
+            module: MODULE,
+            entityType: "ImportJob",
+            entityId: id,
+            after,
+            message: `Importó ${inserted.length} empleados desde "${job.fileName}" (${skipped} filas sin importar)${alsoCreated}.`,
+          },
+          tx,
+        );
+      },
     },
   );
-  return { created: created.length };
+  return { created: created.length, catalogItems: newItems.length };
 }
 
 export async function discardImport(ctx: ActorContext, id: string) {

@@ -1,4 +1,5 @@
 import "server-only";
+import type { Prisma } from "@/generated/prisma/client";
 import { formatPeriod, periodKey } from "@/lib/format";
 import { paginate } from "@/lib/list/query";
 import { auditDiff, recordAudit, sanitizeForAudit } from "@/server/audit";
@@ -172,6 +173,38 @@ export async function createCatalogItem(ctx: ActorContext, key: CatalogKey, inpu
     );
     return { id: created.id };
   });
+}
+
+/**
+ * Alta de un elemento con solo el nombre, dentro de la transacción de otro
+ * módulo: la importación de empleados da de alta así los sectores, puestos y
+ * establecimientos que faltan, con el id que ya usan sus filas. `origin` se
+ * agrega al mensaje de la auditoría. Quien llama controla los nombres
+ * repetidos; si igual se repite uno, la base lo rechaza.
+ */
+export async function createNamedCatalogItem(
+  ctx: ActorContext,
+  key: CatalogKey,
+  item: { id: string; name: string },
+  origin: string,
+  tx: Prisma.TransactionClient,
+) {
+  await assertPermission(ctx, PERMISSION, MODULE);
+  const def = CATALOGS[key];
+  const data = catalogItemSchema(def, "create").parse({ [labelField(def)]: item.name });
+  const created = await repo.createItem(key, { ...data, id: item.id }, ctx.userId, tx);
+  await recordAudit(
+    ctx,
+    {
+      action: "CREATE",
+      module: MODULE,
+      entityType: repo.entityType(key),
+      entityId: created.id,
+      after: sanitizeForAudit(auditable(def, created)),
+      message: `Alta de ${def.singular}: ${String(created[labelField(def)])} (${origin})`,
+    },
+    tx,
+  );
 }
 
 export async function updateCatalogItem(ctx: ActorContext, key: CatalogKey, id: string, input: unknown) {
