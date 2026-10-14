@@ -1,4 +1,6 @@
+import { FileWarning } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { AccessDenied } from "@/components/feedback/access-denied";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -6,6 +8,7 @@ import { ListSkeleton } from "@/components/feedback/list-skeleton";
 import { PageHeader } from "@/components/layout/page-header";
 import { Pagination } from "@/components/list/pagination";
 import { SearchInput } from "@/components/list/search-input";
+import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DocumentDialog } from "@/features/documents/components/document-dialog";
 import { DocumentFilters } from "@/features/documents/components/document-filters";
@@ -48,9 +51,19 @@ async function DocumentsContent({ searchParams }: Pick<Props, "searchParams">) {
         title="Documentación"
         description="Documentos de todos los legajos, con su estado y vencimiento."
         actions={
-          form.edit && (
-            <DocumentDialog employeeId={null} employees={employees} types={form.edit.types} limits={form.edit.limits} />
-          )
+          <>
+            <Link href="/documentacion/faltantes" className={buttonVariants({ variant: "outline" })}>
+              <FileWarning /> Obligatorios faltantes
+            </Link>
+            {form.edit && (
+              <DocumentDialog
+                employeeId={null}
+                employees={employees}
+                types={form.edit.types}
+                limits={form.edit.limits}
+              />
+            )}
+          </>
         }
       />
       <Card>

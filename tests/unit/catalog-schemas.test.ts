@@ -22,7 +22,19 @@ describe("esquemas de catálogos", () => {
 
   it("las referencias vacías se guardan como null", () => {
     const schema = catalogItemSchema(CATALOGS.puestos, "create");
-    expect(schema.parse({ name: "Vendedor", departmentId: "" })).toEqual({ name: "Vendedor", departmentId: null });
+    expect(schema.parse({ name: "Vendedor", departmentId: "" })).toEqual({
+      name: "Vendedor",
+      departmentId: null,
+      jobDescription: null,
+      requiredPpe: null,
+    });
+  });
+
+  it("los textos largos del puesto conservan los renglones y tienen tope", () => {
+    const schema = catalogItemSchema(CATALOGS.puestos, "create");
+    const parsed = schema.parse({ name: "Operario", requiredPpe: "  Guantes.\nCalzado de seguridad.  " });
+    expect(parsed).toMatchObject({ requiredPpe: "Guantes.\nCalzado de seguridad." });
+    expect(schema.safeParse({ name: "Operario", jobDescription: "x".repeat(501) }).success).toBe(false);
   });
 
   it("horas semanales con coma o punto decimal", () => {

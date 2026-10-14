@@ -79,3 +79,19 @@
     @apply bg-background text-foreground font-sans antialiased;
   }
 }
+
+/*
+ * Formulario de entrega de EPP: A4 apaisado solo para esa hoja (página con
+ * nombre). Al imprimirlo se ocultan los avisos y anuncios que el navegador
+ * agrega al final de la página: si no, salen en una hoja en blanco.
+ */
+@page epp {
+  size: A4 landscape;
+  margin: 6mm;
+}
+
+@media print {
+  body:has([data-print-sheet]) > :not(main) {
+    display: none !important;
+  }
+}

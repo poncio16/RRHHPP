@@ -7,13 +7,18 @@ import type { PrismaClient } from "../../src/generated/prisma/client";
  * Tipos de documento (datos base: los que pide el relevamiento; se editan
  * desde Configuración) y documentos de demostración para algunos empleados,
  * con sus archivos en STORAGE_DIR. Las vigencias y anticipaciones de los
- * tipos quedan vacías: dependen de cada empresa.
+ * tipos quedan vacías: dependen de cada empresa. Los obligatorios son los que
+ * indicó la empresa; los apercibimientos no, porque solo existen si hubo una
+ * sanción.
  */
-const DOCUMENT_TYPES: { name: string; isSensitive?: boolean; requiresExpiry?: boolean }[] = [
-  { name: "DNI" },
+const DOCUMENT_TYPES: { name: string; isSensitive?: boolean; requiresExpiry?: boolean; isRequired?: boolean }[] = [
+  { name: "DNI", isRequired: true },
   { name: "CUIL" },
-  { name: "Constancia de CUIL" },
-  { name: "Alta laboral" },
+  { name: "Constancia de CUIL", isRequired: true },
+  { name: "Alta temprana firmada", isRequired: true },
+  { name: "Formulario de EPP", isRequired: true },
+  { name: "Apercibimiento" },
+  { name: "Recibo de sueldo" },
   { name: "Contrato" },
   { name: "Certificado médico", isSensitive: true },
   { name: "Licencia" },
@@ -69,7 +74,7 @@ type DemoDocument = {
 
 const DEMO: DemoDocument[] = [
   { file: 1, type: "DNI", issue: -2000, attach: true },
-  { file: 1, type: "Alta laboral", issue: -6000 },
+  { file: 1, type: "Alta temprana firmada", issue: -6000 },
   { file: 4, type: "DNI", issue: -1500, attach: true },
   { file: 4, type: "Certificado", issue: -340, expiry: 25, notes: "Curso de primeros auxilios.", attach: true },
   { file: 5, type: "Constancia de CUIL", status: "PENDIENTE", notes: "Se pidió al empleado." },
@@ -80,7 +85,7 @@ const DEMO: DemoDocument[] = [
   { file: 20, type: "Documentación de obra social", status: "OBSERVADO", notes: "Falta la firma." },
   { file: 21, type: "Certificado", issue: -360, expiry: 5, notes: "Licencia de conducir profesional." },
   { file: 23, type: "Contrato", issue: -180, expiry: 185, attach: true },
-  { file: 24, type: "Alta laboral", issue: -65, attach: true },
+  { file: 24, type: "Alta temprana firmada", issue: -65, attach: true },
 ];
 
 /** Datos base: tipos de documento. Devuelve cuántos creó. */

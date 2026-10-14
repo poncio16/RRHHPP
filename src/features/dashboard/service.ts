@@ -1,5 +1,6 @@
 import "server-only";
 import { alertOverview } from "@/features/alerts/service";
+import { countMissingRequiredDocuments } from "@/features/documents/service";
 import { canAttachCertificate, workDaysOf } from "@/features/leaves/service";
 import { balanceUsage, holidaysBetween } from "@/features/leaves/repository";
 import {
@@ -79,12 +80,14 @@ export type PendingTask = { key: string; label: string; count: number; href: str
 async function tasksBlock(ctx: ActorContext, today: Date, currentPeriod: Date): Promise<PendingTask[]> {
   const can = (permission: Parameters<typeof hasPermission>[1]) => hasPermission(ctx, permission);
   const canSeeHealth = can("document.sensitive:read");
-  const [requests, certificates, exits, novelties, documents] = await Promise.all([
+  const canFileDocuments = can("document:read") && can("document:write");
+  const [requests, certificates, exits, novelties, documents, missingDocuments] = await Promise.all([
     can("leave:read") && can("leave:approve") ? repo.leaveRequestsCount() : 0,
     can("leave:read") && canAttachCertificate(ctx) ? repo.missingCertificatesCount(canSeeHealth) : 0,
     can("exit:read") && can("exit:write") ? repo.dueExitsCount(today) : 0,
     can("novelty:read") && can("novelty:write") ? repo.pendingNoveltiesByPeriod(currentPeriod) : [],
-    can("document:read") && can("document:write") ? repo.openDocumentsCount(canSeeHealth) : null,
+    canFileDocuments ? repo.openDocumentsCount(canSeeHealth) : null,
+    canFileDocuments ? countMissingRequiredDocuments(ctx) : 0,
   ]);
   const tasks: PendingTask[] = [
     {
@@ -122,6 +125,12 @@ async function tasksBlock(ctx: ActorContext, today: Date, currentPeriod: Date): 
       label: "Documentos observados",
       count: documents?.observed ?? 0,
       href: "/documentacion?status=observados",
+    },
+    {
+      key: "documentos-obligatorios",
+      label: "Legajos sin documentos obligatorios",
+      count: missingDocuments,
+      href: "/documentacion/faltantes",
     },
   ];
   return tasks.filter((t) => t.count > 0);

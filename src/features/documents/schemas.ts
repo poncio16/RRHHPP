@@ -83,3 +83,9 @@ export const documentListQuerySchema = baseListQuerySchema.extend({
   sort: z.enum(["vencimiento", "empleado", "carga"]).catch("vencimiento").default("vencimiento"),
 });
 export type DocumentListQuery = z.output<typeof documentListQuerySchema>;
+
+/** Legajos activos a los que les falta algún documento obligatorio. */
+export const missingDocumentsQuerySchema = baseListQuerySchema.extend({
+  documentTypeId: z.uuid().optional().catch(undefined),
+});
+export type MissingDocumentsQuery = z.output<typeof missingDocumentsQuerySchema>;

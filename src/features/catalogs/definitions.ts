@@ -26,6 +26,8 @@ export type CatalogField =
       uppercase?: boolean;
       /** Solo se carga en el alta; después no se puede cambiar (lo usa el sistema). */
       immutable?: boolean;
+      /** Texto de varias líneas (se edita en un cuadro más alto). */
+      multiline?: boolean;
       hint?: string;
       inList?: boolean;
     }
@@ -205,18 +207,36 @@ export const CATALOGS: Record<CatalogKey, CatalogDefinition> = {
         relation: "department",
         inList: true,
       },
+      {
+        name: "jobDescription",
+        label: "Descripción del puesto",
+        type: "text",
+        max: 500,
+        multiline: true,
+        hint: "Opcional. Tareas del puesto en pocas palabras; se imprime en el formulario de entrega de EPP.",
+      },
+      {
+        name: "requiredPpe",
+        label: "Elementos de protección personal necesarios",
+        type: "text",
+        max: 500,
+        multiline: true,
+        hint: "Opcional. Los que indica el servicio de higiene y seguridad para este puesto; se imprimen en el formulario de entrega de EPP.",
+      },
     ],
   },
   establecimientos: {
     key: "establecimientos",
     title: "Establecimientos",
     singular: "establecimiento",
-    description: "Sucursales, plantas u oficinas donde trabaja el personal.",
+    description:
+      "Sucursales, plantas u oficinas donde trabaja el personal. Su domicilio se imprime en el formulario de entrega de EPP.",
     section: "estructura",
     fields: [
       name(),
       { name: "addressLine", label: "Domicilio", type: "text", max: 200 },
       { name: "city", label: "Localidad", type: "text", max: 120, inList: true },
+      { name: "postalCode", label: "Código postal", type: "text", max: 10 },
       {
         name: "provinceId",
         label: "Provincia",
@@ -345,7 +365,7 @@ export const CATALOGS: Record<CatalogKey, CatalogDefinition> = {
     key: "tipos-documento",
     title: "Tipos de documento",
     singular: "tipo de documento",
-    description: "Documentación del legajo, con vencimiento y anticipación del aviso.",
+    description: "Documentación del legajo: vencimiento, anticipación del aviso y si es obligatoria.",
     section: "documentacion",
     fields: [
       name(),
@@ -377,6 +397,13 @@ export const CATALOGS: Record<CatalogKey, CatalogDefinition> = {
         label: "Documentación sensible",
         type: "boolean",
         hint: "Datos de salud (certificados médicos, preocupacionales): solo la ven los roles con ese permiso.",
+        inList: true,
+      },
+      {
+        name: "isRequired",
+        label: "Obligatorio en todo legajo",
+        type: "boolean",
+        hint: "El sistema avisa en qué legajos activos falta. No lo marques en los que solo existen en algunos casos, como los apercibimientos.",
         inList: true,
       },
     ],

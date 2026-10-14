@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import * as alerts from "@/features/alerts/service";
 import * as dashboard from "@/features/dashboard/service";
-import { listDocuments } from "@/features/documents/service";
+import { listDocuments, listMissingRequiredDocuments } from "@/features/documents/service";
 import { listExits } from "@/features/exits/service";
 import { listLeaves } from "@/features/leaves/service";
 import { listNovelties } from "@/features/novelties/service";
@@ -190,6 +190,7 @@ describe("inicio: para resolver", () => {
     if (url.pathname === "/egresos") return (await listExits(ctx, query)).total;
     if (url.pathname === "/novedades") return (await listNovelties(ctx, query)).total;
     if (url.pathname === "/documentacion") return (await listDocuments(ctx, query)).total;
+    if (url.pathname === "/documentacion/faltantes") return (await listMissingRequiredDocuments(ctx, query)).total;
     throw new Error(`Sin lista para ${href}`);
   }
   const countOf = (tasks: dashboard.PendingTask[], key: string) => tasks.find((t) => t.key === key)?.count ?? 0;

@@ -25,14 +25,25 @@ const DEPARTMENTS = [
   { name: "Sistemas", code: "SIS" },
 ];
 
-const POSITIONS: { name: string; department: string }[] = [
+/** La descripción y los elementos de protección son de ejemplo: los define higiene y seguridad. */
+const POSITIONS: { name: string; department: string; jobDescription?: string; requiredPpe?: string }[] = [
   { name: "Analista administrativo", department: "Administración" },
   { name: "Asistente contable", department: "Administración" },
   { name: "Vendedor", department: "Comercial" },
   { name: "Jefe de ventas", department: "Comercial" },
-  { name: "Operario de depósito", department: "Depósito" },
+  {
+    name: "Operario de depósito",
+    department: "Depósito",
+    jobDescription: "Recepción, guardado y despacho de mercadería.",
+    requiredPpe: "Ropa de trabajo, calzado de seguridad, guantes y chaleco reflectivo.",
+  },
   { name: "Encargado de depósito", department: "Depósito" },
-  { name: "Chofer", department: "Logística" },
+  {
+    name: "Chofer",
+    department: "Logística",
+    jobDescription: "Reparto de mercadería con vehículo de la empresa.",
+    requiredPpe: "Ropa de trabajo, calzado de seguridad y chaleco reflectivo.",
+  },
   { name: "Analista de RRHH", department: "Recursos Humanos" },
   { name: "Soporte técnico", department: "Sistemas" },
 ];
@@ -81,9 +92,16 @@ const WORKPLACES = [
     name: "Casa central",
     addressLine: "Av. Demostración 1234",
     city: "Ciudad Autónoma de Buenos Aires",
+    postalCode: "1000",
     province: "AR-C",
   },
-  { name: "Depósito Avellaneda", addressLine: "Calle Ficticia 567", city: "Avellaneda", province: "AR-B" },
+  {
+    name: "Depósito Avellaneda",
+    addressLine: "Calle Ficticia 567",
+    city: "Avellaneda",
+    postalCode: "1870",
+    province: "AR-B",
+  },
 ];
 
 const SCHEDULES = [
@@ -114,9 +132,8 @@ export async function seedOrganization(db: PrismaClient): Promise<{ company: num
   await db.department.createMany({ data: sorted(DEPARTMENTS), skipDuplicates: true });
   const departments = new Map((await db.department.findMany()).map((d) => [d.name, d.id]));
   await db.position.createMany({
-    data: sorted(POSITIONS).map(({ name, department, sortOrder }) => ({
-      name,
-      sortOrder,
+    data: sorted(POSITIONS).map(({ department, ...position }) => ({
+      ...position,
       departmentId: departments.get(department) ?? null,
     })),
     skipDuplicates: true,

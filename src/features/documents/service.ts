@@ -19,8 +19,10 @@ import {
   documentLeaveSchema,
   documentVersionSchema,
   documentWithEmployeeSchema,
+  missingDocumentsQuerySchema,
   type DocumentData,
 } from "./schemas";
+import { missingRequired } from "./required";
 
 const MODULE = "documentacion";
 
@@ -80,6 +82,61 @@ export async function listDocuments(ctx: ActorContext, rawQuery: unknown, employ
     ),
     query,
   };
+}
+
+/**
+ * Legajos activos con documentos obligatorios sin cargar, con los tipos que
+ * faltan. Sin permiso de datos de salud no se controlan los tipos sensibles.
+ * El listado y el contador del Inicio salen de acá, así que coinciden.
+ */
+async function findMissingRequired(
+  ctx: ActorContext,
+  filter: { q?: string; documentTypeId?: string; employeeId?: string },
+) {
+  const types = await repo.requiredDocumentTypes(canSeeSensitive(ctx));
+  const checked = filter.documentTypeId ? types.filter((t) => t.id === filter.documentTypeId) : types;
+  if (checked.length === 0) return { types, rows: [] };
+  const employees = await repo.activeEmployeesWithDocumentTypes(
+    checked.map((t) => t.id),
+    filter,
+  );
+  const rows = employees
+    .map((e) => ({
+      employee: { id: e.id, fileNumber: e.fileNumber, lastName: e.lastName, firstName: e.firstName },
+      department: e.department.name,
+      missing: missingRequired(
+        checked,
+        e.documents.map((d) => d.documentTypeId),
+      ).map((t) => t.name),
+    }))
+    .filter((row) => row.missing.length > 0);
+  return { types, rows };
+}
+
+export type MissingDocumentsRow = Awaited<ReturnType<typeof findMissingRequired>>["rows"][number];
+
+export async function listMissingRequiredDocuments(ctx: ActorContext, rawQuery: unknown) {
+  await assertPermission(ctx, "document:read", MODULE);
+  const query = missingDocumentsQuerySchema.parse(rawQuery);
+  const { types, rows } = await findMissingRequired(ctx, query);
+  const start = (query.page - 1) * query.pageSize;
+  return {
+    ...paginate(rows.slice(start, start + query.pageSize), rows.length, query.page, query.pageSize),
+    query,
+    requiredTypes: types,
+  };
+}
+
+/** Cantidad de legajos activos con algún documento obligatorio sin cargar (bandeja del Inicio). */
+export async function countMissingRequiredDocuments(ctx: ActorContext): Promise<number> {
+  await assertPermission(ctx, "document:read", MODULE);
+  return (await findMissingRequired(ctx, {})).rows.length;
+}
+
+/** Tipos obligatorios que le faltan a un legajo (vacío si no está activo). */
+export async function getMissingRequiredDocuments(ctx: ActorContext, employeeId: string): Promise<string[]> {
+  await assertPermission(ctx, "document:read", MODULE);
+  return (await findMissingRequired(ctx, { employeeId })).rows[0]?.missing ?? [];
 }
 
 /** Tipos visibles para el usuario, para filtros y formularios. */

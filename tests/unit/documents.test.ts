@@ -3,6 +3,7 @@ import { catalogItemSchema } from "@/features/catalogs/schemas";
 import { CATALOGS } from "@/features/catalogs/definitions";
 import { daysUntil, expiryState, suggestedExpiry } from "@/features/documents/expiry";
 import { detectFileType, safeFileName } from "@/features/documents/files";
+import { missingRequired } from "@/features/documents/required";
 import { documentSchema } from "@/features/documents/schemas";
 
 const d = (iso: string) => new Date(`${iso}T00:00:00Z`);
@@ -66,5 +67,27 @@ describe("esquemas", () => {
     expect(schema.parse(once)).toEqual(once);
     expect(schema.safeParse({ name: "X", alertDaysBefore: "1,5" }).success).toBe(false);
     expect(schema.safeParse({ name: "X", alertDaysBefore: "400" }).success).toBe(false);
+  });
+});
+
+describe("documentos obligatorios", () => {
+  const required = [
+    { id: "dni", name: "DNI" },
+    { id: "alta", name: "Alta temprana firmada" },
+    { id: "epp", name: "Formulario de EPP" },
+  ];
+
+  it("devuelve los tipos sin documento cargado, en el orden del catálogo", () => {
+    expect(missingRequired(required, ["alta", "otro"]).map((t) => t.name)).toEqual(["DNI", "Formulario de EPP"]);
+    expect(missingRequired(required, ["epp", "dni", "alta", "dni"])).toEqual([]);
+    expect(missingRequired([], [])).toEqual([]);
+  });
+});
+
+describe("catálogo de tipos de documento", () => {
+  it("el campo obligatorio es opcional y por defecto no", () => {
+    const schema = catalogItemSchema(CATALOGS["tipos-documento"], "create");
+    expect(schema.parse({ name: "Formulario de EPP" }).isRequired).toBe(false);
+    expect(schema.parse({ name: "Formulario de EPP", isRequired: true }).isRequired).toBe(true);
   });
 });

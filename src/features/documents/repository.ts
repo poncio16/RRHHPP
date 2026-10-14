@@ -88,6 +88,43 @@ export async function listDocuments(
   return { items, total };
 }
 
+/** Tipos obligatorios activos, en el orden del catálogo; sin los sensibles si no se pueden ver. */
+export async function requiredDocumentTypes(includeSensitive: boolean) {
+  return db.documentType.findMany({
+    where: { isRequired: true, isActive: true, ...(includeSensitive ? {} : { isSensitive: false }) },
+    select: { id: true, name: true },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+}
+
+/**
+ * Empleados activos con los tipos (de entre `typeIds`) de los que tienen
+ * algún documento sin anular. `q` busca por legajo o por apellido y nombre.
+ */
+export async function activeEmployeesWithDocumentTypes(typeIds: string[], filter: { q?: string; employeeId?: string }) {
+  const and: Prisma.EmployeeWhereInput[] = [{ status: "ACTIVO" }];
+  if (filter.employeeId) and.push({ id: filter.employeeId });
+  if (filter.q) {
+    const q = filter.q;
+    and.push(/^\d{1,9}$/.test(q) ? { fileNumber: Number(q) } : { id: { in: await idsMatchingName(q) } });
+  }
+  return db.employee.findMany({
+    where: { AND: and },
+    select: {
+      id: true,
+      fileNumber: true,
+      lastName: true,
+      firstName: true,
+      department: { select: { name: true } },
+      documents: {
+        where: { documentTypeId: { in: typeIds }, status: { not: "ANULADO" } },
+        select: { documentTypeId: true },
+      },
+    },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+  });
+}
+
 export async function findDocument(id: string, client: Client = db) {
   return client.document.findUnique({ where: { id }, include: documentInclude });
 }

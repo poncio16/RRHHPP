@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { ActionResult } from "@/server/errors/result";
 import { CATALOGS, type CatalogKey } from "../definitions";
 import { catalogItemSchema } from "../schemas";
@@ -120,6 +121,20 @@ export function CatalogItemForm({
           );
         }
         const locked = field.type === "text" && field.immutable && mode === "update";
+        if (field.type === "text" && field.multiline) {
+          return (
+            <FormField
+              key={field.name}
+              id={id}
+              label={field.label}
+              error={error}
+              hint={field.hint}
+              required={required && !locked}
+            >
+              <Textarea {...fieldA11y(id, error)} rows={3} disabled={locked} {...form.register(field.name)} />
+            </FormField>
+          );
+        }
         return (
           <FormField
             key={field.name}
