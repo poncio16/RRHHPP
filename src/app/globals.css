@@ -79,3 +79,12 @@
     @apply bg-background text-foreground font-sans antialiased;
   }
 }
+
+/*
+ * Formulario de entrega de EPP: A4 apaisado solo para esa hoja (página con
+ * nombre). Lo que se oculta al imprimir está en `PrintOnlyMain`.
+ */
+@page epp {
+  size: A4 landscape;
+  margin: 6mm;
+}

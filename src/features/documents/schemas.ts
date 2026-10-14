@@ -1,4 +1,4 @@
-import { parseIsoDate, todayInTimeZone } from "@/lib/format";
+import { parseIsoDate, parsePeriod, periodOf, todayInTimeZone } from "@/lib/format";
 import { baseListQuerySchema } from "@/lib/list/query";
 import { z } from "@/lib/zod";
 import { EDITABLE_STATUSES } from "./constants";
@@ -23,6 +23,14 @@ export const documentSchema = z
     documentTypeId: z.preprocess((v) => v ?? "", z.uuid("Elegí el tipo de documento.")),
     issueDate: optionalIsoDate,
     expiryDate: optionalIsoDate,
+    /** Mes al que corresponde ("AAAA-MM"); se exige en los tipos que se controlan mes a mes. */
+    period: z.preprocess(
+      blankToNull,
+      z
+        .string()
+        .refine((v) => parsePeriod(v) !== null, "Ingresá un mes válido (AAAA-MM).")
+        .nullable(),
+    ),
     status: z.enum(EDITABLE_STATUSES, "Elegí el estado."),
     notes: z.preprocess(
       (v) => v ?? "",
@@ -36,6 +44,10 @@ export const documentSchema = z
   .superRefine((data, ctx) => {
     const issue = data.issueDate ? parseIsoDate(data.issueDate) : null;
     const expiry = data.expiryDate ? parseIsoDate(data.expiryDate) : null;
+    const period = data.period ? parsePeriod(data.period) : null;
+    if (period && period > periodOf(todayInTimeZone())) {
+      ctx.addIssue({ code: "custom", path: ["period"], message: "El mes no puede ser posterior al actual." });
+    }
     if (issue && issue > todayInTimeZone()) {
       ctx.addIssue({ code: "custom", path: ["issueDate"], message: "La fecha de emisión no puede ser futura." });
     }
@@ -83,3 +95,9 @@ export const documentListQuerySchema = baseListQuerySchema.extend({
   sort: z.enum(["vencimiento", "empleado", "carga"]).catch("vencimiento").default("vencimiento"),
 });
 export type DocumentListQuery = z.output<typeof documentListQuerySchema>;
+
+/** Legajos activos a los que les falta algún documento obligatorio. */
+export const missingDocumentsQuerySchema = baseListQuerySchema.extend({
+  documentTypeId: z.uuid().optional().catch(undefined),
+});
+export type MissingDocumentsQuery = z.output<typeof missingDocumentsQuerySchema>;

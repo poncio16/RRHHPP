@@ -18,3 +18,11 @@ export const EXPIRY_LABELS: Record<ExpiryState, string> = {
   POR_VENCER: "Por vencer",
   VENCIDO: "Vencido",
 };
+
+/** Si el tipo es obligatorio en todo legajo activo, y con qué frecuencia. */
+export const DOCUMENT_REQUIREMENT_LABELS = {
+  UNA_VEZ: "Sí, una vez",
+  MENSUAL: "Sí, todos los meses",
+} as const;
+
+export type DocumentRequirement = keyof typeof DOCUMENT_REQUIREMENT_LABELS;

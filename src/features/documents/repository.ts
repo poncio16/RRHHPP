@@ -88,6 +88,45 @@ export async function listDocuments(
   return { items, total };
 }
 
+/** Tipos obligatorios activos, en el orden del catálogo; sin los sensibles si no se pueden ver. */
+export async function requiredDocumentTypes(includeSensitive: boolean) {
+  const types = await db.documentType.findMany({
+    where: { requirement: { not: null }, isActive: true, ...(includeSensitive ? {} : { isSensitive: false }) },
+    select: { id: true, name: true, requirement: true, requiredFrom: true },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+  return types.flatMap(({ requirement, ...type }) => (requirement ? [{ ...type, requirement }] : []));
+}
+
+/**
+ * Empleados activos con sus documentos sin anular de los tipos `typeIds`
+ * (tipo y mes). `q` busca por legajo o por apellido y nombre.
+ */
+export async function activeEmployeesWithDocuments(typeIds: string[], filter: { q?: string; employeeId?: string }) {
+  const and: Prisma.EmployeeWhereInput[] = [{ status: "ACTIVO" }];
+  if (filter.employeeId) and.push({ id: filter.employeeId });
+  if (filter.q) {
+    const q = filter.q;
+    and.push(/^\d{1,9}$/.test(q) ? { fileNumber: Number(q) } : { id: { in: await idsMatchingName(q) } });
+  }
+  return db.employee.findMany({
+    where: { AND: and },
+    select: {
+      id: true,
+      fileNumber: true,
+      lastName: true,
+      firstName: true,
+      hireDate: true,
+      department: { select: { name: true } },
+      documents: {
+        where: { documentTypeId: { in: typeIds }, status: { not: "ANULADO" } },
+        select: { documentTypeId: true, period: true },
+      },
+    },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+  });
+}
+
 export async function findDocument(id: string, client: Client = db) {
   return client.document.findUnique({ where: { id }, include: documentInclude });
 }
@@ -111,6 +150,7 @@ export async function listTypeOptions(includeSensitive: boolean, includeIds: str
       isSensitive: true,
       requiresExpiry: true,
       defaultValidityDays: true,
+      requirement: true,
     },
   });
 }

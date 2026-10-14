@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { formatDate, parseIsoDate, todayInTimeZone, toIsoDate } from "@/lib/format";
+import { formatDate, parseIsoDate, parsePeriod, periodKey, todayInTimeZone, toIsoDate } from "@/lib/format";
 import { paginate } from "@/lib/list/query";
 import { auditDiff, recordAudit } from "@/server/audit";
 import { assertPermission, hasPermission } from "@/server/authz";
@@ -19,8 +19,10 @@ import {
   documentLeaveSchema,
   documentVersionSchema,
   documentWithEmployeeSchema,
+  missingDocumentsQuerySchema,
   type DocumentData,
 } from "./schemas";
+import { describeMissing, lastDueMonth, missingDocuments } from "./required";
 
 const MODULE = "documentacion";
 
@@ -38,6 +40,7 @@ function toListItem(doc: repo.DocumentRecord, today: Date, defaultAlertDays: num
     documentType: { id: doc.documentType.id, name: doc.documentType.name, isSensitive: doc.documentType.isSensitive },
     issueDate: doc.issueDate,
     expiryDate: doc.expiryDate,
+    period: doc.period,
     // Un documento anulado ya no vence.
     expiry: doc.status === "ANULADO" ? null : expiryState(doc.expiryDate, today, alertDays),
     status: doc.status,
@@ -48,6 +51,7 @@ function toListItem(doc: repo.DocumentRecord, today: Date, defaultAlertDays: num
       documentTypeId: doc.documentTypeId,
       issueDate: doc.issueDate ? toIsoDate(doc.issueDate) : "",
       expiryDate: doc.expiryDate ? toIsoDate(doc.expiryDate) : "",
+      period: doc.period ? periodKey(doc.period) : "",
       status: doc.status === "ANULADO" ? "PRESENTADO" : doc.status,
       notes: doc.notes ?? "",
     },
@@ -80,6 +84,66 @@ export async function listDocuments(ctx: ActorContext, rawQuery: unknown, employ
     ),
     query,
   };
+}
+
+/**
+ * Legajos activos con documentos obligatorios sin cargar, con lo que falta
+ * ("DNI", "Recibo de sueldo: agosto de 2026"). Sin permiso de datos de salud
+ * no se controlan los tipos sensibles. Un `documentTypeId` que no es de un
+ * obligatorio visible no filtra. El listado, el aviso del legajo y el
+ * contador del Inicio salen de acá, así que coinciden.
+ */
+async function findMissingRequired(
+  ctx: ActorContext,
+  filter: { q?: string; documentTypeId?: string; employeeId?: string },
+) {
+  const types = await repo.requiredDocumentTypes(canSeeSensitive(ctx));
+  const selected = types.filter((t) => t.id === filter.documentTypeId);
+  const checked = selected.length > 0 ? selected : types;
+  const documentTypeId = selected.length > 0 ? filter.documentTypeId : undefined;
+  if (checked.length === 0) return { types, documentTypeId, rows: [] };
+  const { monthlyGraceDays } = await getSetting("documents");
+  const lastDue = lastDueMonth(todayInTimeZone(), monthlyGraceDays);
+  const employees = await repo.activeEmployeesWithDocuments(
+    checked.map((t) => t.id),
+    filter,
+  );
+  const rows = employees
+    .map((e) => ({
+      employee: { id: e.id, fileNumber: e.fileNumber, lastName: e.lastName, firstName: e.firstName },
+      department: e.department.name,
+      missing: missingDocuments(checked, e.documents, e.hireDate, lastDue).map(describeMissing),
+    }))
+    .filter((row) => row.missing.length > 0);
+  return { types, documentTypeId, rows };
+}
+
+export type MissingDocumentsRow = Awaited<ReturnType<typeof findMissingRequired>>["rows"][number];
+
+export async function listMissingRequiredDocuments(ctx: ActorContext, rawQuery: unknown) {
+  await assertPermission(ctx, "document:read", MODULE);
+  const parsed = missingDocumentsQuerySchema.parse(rawQuery);
+  const { types, documentTypeId, rows } = await findMissingRequired(ctx, parsed);
+  // Una página que ya no existe (por ejemplo, después de cargar lo que faltaba) muestra la última.
+  const page = Math.min(parsed.page, Math.max(1, Math.ceil(rows.length / parsed.pageSize)));
+  const start = (page - 1) * parsed.pageSize;
+  return {
+    ...paginate(rows.slice(start, start + parsed.pageSize), rows.length, page, parsed.pageSize),
+    query: { ...parsed, page, documentTypeId },
+    requiredTypes: types,
+  };
+}
+
+/** Cantidad de legajos activos con algún documento obligatorio sin cargar (bandeja del Inicio). */
+export async function countMissingRequiredDocuments(ctx: ActorContext): Promise<number> {
+  await assertPermission(ctx, "document:read", MODULE);
+  return (await findMissingRequired(ctx, {})).rows.length;
+}
+
+/** Lo que le falta a un legajo (vacío si no está activo). */
+export async function getMissingRequiredDocuments(ctx: ActorContext, employeeId: string): Promise<string[]> {
+  await assertPermission(ctx, "document:read", MODULE);
+  return (await findMissingRequired(ctx, { employeeId })).rows[0]?.missing ?? [];
 }
 
 /** Tipos visibles para el usuario, para filtros y formularios. */
@@ -140,14 +204,29 @@ async function validateType(ctx: ActorContext, data: DocumentData, currentTypeId
   if (type.requiresExpiry && !data.expiryDate) {
     throw new ValidationError(undefined, { expiryDate: [`"${type.name}" requiere fecha de vencimiento.`] });
   }
+  // Un tipo inactivo ya no se controla: sus documentos se pueden editar sin mes.
+  if (type.isActive && type.requirement === "MENSUAL" && !data.period) {
+    throw new ValidationError(undefined, { period: [`Indicá el mes al que corresponde "${type.name}".`] });
+  }
   return type;
 }
 
-function toRecord(data: DocumentData) {
+/**
+ * El mes se carga en los tipos que se controlan mes a mes. Si el tipo dejó de
+ * ser mensual, al editar se conserva el que tenía (`current`): el formulario
+ * ya no lo muestra y el tipo puede volver a controlarse.
+ */
+function toRecord(
+  data: DocumentData,
+  type: { id: string; requirement: string | null },
+  current?: { documentTypeId: string; period: Date | null },
+) {
+  const kept = current?.documentTypeId === type.id ? current.period : null;
   return {
     documentTypeId: data.documentTypeId,
     issueDate: data.issueDate ? parseIsoDate(data.issueDate) : null,
     expiryDate: data.expiryDate ? parseIsoDate(data.expiryDate) : null,
+    period: type.requirement === "MENSUAL" ? (data.period ? parsePeriod(data.period) : kept) : kept,
     status: data.status,
     notes: data.notes,
   };
@@ -157,6 +236,7 @@ function auditable(doc: {
   documentTypeId: string;
   issueDate: Date | null;
   expiryDate: Date | null;
+  period: Date | null;
   status: string;
   notes: string | null;
   fileId: string | null;
@@ -165,6 +245,7 @@ function auditable(doc: {
     documentTypeId: doc.documentTypeId,
     issueDate: doc.issueDate ? toIsoDate(doc.issueDate) : null,
     expiryDate: doc.expiryDate ? toIsoDate(doc.expiryDate) : null,
+    period: doc.period ? periodKey(doc.period) : null,
     status: doc.status,
     notes: doc.notes,
     fileId: doc.fileId,
@@ -220,7 +301,7 @@ export async function createDocument(ctx: ActorContext, employeeId: string | nul
       const fileId = await storeFileRecord(ctx, prepared, tx);
       const doc = await repo.createDocument(
         {
-          ...toRecord(data),
+          ...toRecord(data, type),
           employeeId: targetId,
           fileId,
           leaveRecordId,
@@ -272,7 +353,7 @@ export async function updateDocument(ctx: ActorContext, id: string, input: unkno
   await withStoredFile(prepared, () =>
     repo.transaction(async (tx) => {
       const fileId = (await storeFileRecord(ctx, prepared, tx)) ?? current.fileId;
-      const next = { ...toRecord(data), fileId };
+      const next = { ...toRecord(data, type, current), fileId };
       const ok = await repo.updateDocumentVersioned(id, new Date(version), { ...next, updatedById: ctx.userId }, tx);
       if (!ok) throw conflict();
       const diff = auditDiff(auditable(current), auditable(next));

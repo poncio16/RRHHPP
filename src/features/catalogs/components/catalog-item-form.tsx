@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { ActionResult } from "@/server/errors/result";
 import { CATALOGS, type CatalogKey } from "../definitions";
 import { catalogItemSchema } from "../schemas";
@@ -81,7 +82,7 @@ export function CatalogItemForm({
         const required =
           field.type === "hours" ||
           (field.type === "choice" && !field.optional) ||
-          (field.type !== "days" && field.type !== "position" && field.type !== "choice" && !!field.required);
+          (field.type === "text" || field.type === "ref" ? !!field.required : false);
         if (field.type === "choice") {
           const locked = field.immutable && mode === "update";
           return (
@@ -94,7 +95,7 @@ export function CatalogItemForm({
               required={!locked && !field.optional}
             >
               <Select {...fieldA11y(id, error)} disabled={locked} {...form.register(field.name)}>
-                <option value="">{field.optional ? "Ninguno" : "Elegí una opción…"}</option>
+                <option value="">{field.optional ? (field.emptyLabel ?? "Ninguno") : "Elegí una opción…"}</option>
                 {field.options.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -119,7 +120,34 @@ export function CatalogItemForm({
             </FormField>
           );
         }
+        if (field.type === "month") {
+          return (
+            <FormField key={field.name} id={id} label={field.label} error={error} hint={field.hint}>
+              <Input
+                {...fieldA11y(id, error)}
+                type="month"
+                placeholder="AAAA-MM"
+                className="w-48"
+                {...form.register(field.name)}
+              />
+            </FormField>
+          );
+        }
         const locked = field.type === "text" && field.immutable && mode === "update";
+        if (field.type === "text" && field.multiline) {
+          return (
+            <FormField
+              key={field.name}
+              id={id}
+              label={field.label}
+              error={error}
+              hint={field.hint}
+              required={required && !locked}
+            >
+              <Textarea {...fieldA11y(id, error)} rows={3} disabled={locked} {...form.register(field.name)} />
+            </FormField>
+          );
+        }
         return (
           <FormField
             key={field.name}

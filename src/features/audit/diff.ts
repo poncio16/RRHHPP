@@ -241,7 +241,10 @@ function scalar(field: string, value: Json | undefined, f: Formatter): string | 
   if (field === "permissions" && isPermission(value)) return PERMISSION_LABELS[value];
   if (field === "alertKey") return own<string>(ALERT_KIND_LABELS, value.split(":")[0]!) ?? value;
   if (field === "days" && f.entityType === "WorkSchedule") return scheduleDays(value);
-  if (ISO_PERIOD.test(value) && (field === "period" || field === "periodo")) {
+  if (
+    ISO_PERIOD.test(value) &&
+    (field === "period" || field === "periodo" || catalogField(f.entityType, field)?.type === "month")
+  ) {
     return formatPeriod(parsePeriod(value)) || value;
   }
   return formatAuditValue(value);

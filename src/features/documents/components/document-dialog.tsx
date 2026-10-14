@@ -33,6 +33,7 @@ type Values = {
   documentTypeId: string;
   issueDate: string;
   expiryDate: string;
+  period: string;
   status: string;
   notes: string;
 };
@@ -44,6 +45,8 @@ export type DocumentTypeChoice = {
   isSensitive: boolean;
   requiresExpiry: boolean;
   defaultValidityDays: number | null;
+  /** "MENSUAL": se carga uno por mes, con el mes al que corresponde. */
+  requirement: string | null;
 };
 
 const EMPTY: Values = {
@@ -51,6 +54,7 @@ const EMPTY: Values = {
   documentTypeId: "",
   issueDate: "",
   expiryDate: "",
+  period: "",
   status: "PRESENTADO",
   notes: "",
 };
@@ -103,6 +107,7 @@ export function DocumentDialog({
   const { errors, isDirty } = form.formState;
   const typeId = useWatch({ control: form.control, name: "documentTypeId" });
   const type = types.find((t) => t.id === typeId);
+  const monthly = type?.requirement === "MENSUAL";
   const visibleTypes = types.filter((t) => t.isActive || t.id === document?.values.documentTypeId);
 
   const reset = () => {
@@ -137,6 +142,10 @@ export function DocumentDialog({
   const submit = form.handleSubmit(() => {
     setFormError(undefined);
     if (fileError) return;
+    if (monthly && !form.getValues("period")) {
+      form.setError("period", { message: `Indicá el mes al que corresponde "${type.name}".` });
+      return;
+    }
     const raw = form.getValues();
     const data = new FormData();
     for (const [key, value] of Object.entries(raw)) {
@@ -237,7 +246,18 @@ export function DocumentDialog({
             hint={type?.isSensitive ? "Documentación sensible: solo la ven los roles autorizados." : undefined}
             required
           >
-            <Select {...fieldA11y("doc-type", errors.documentTypeId?.message)} {...form.register("documentTypeId")}>
+            <Select
+              {...fieldA11y("doc-type", errors.documentTypeId?.message)}
+              {...form.register("documentTypeId", {
+                // El mes solo se usa en los tipos mensuales: al cambiar a otro tipo se descarta.
+                onChange: (e) => {
+                  if (types.find((t) => t.id === e.target.value)?.requirement !== "MENSUAL") {
+                    form.setValue("period", "");
+                    form.clearErrors("period");
+                  }
+                },
+              })}
+            >
               <option value="">Elegí un tipo…</option>
               {visibleTypes.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -247,6 +267,24 @@ export function DocumentDialog({
               ))}
             </Select>
           </FormField>
+          {/* También si el servidor pide el mes (el tipo pasó a mensual después de abrir la pantalla). */}
+          {(monthly || !!errors.period) && (
+            <FormField
+              id="doc-period"
+              label="Mes"
+              error={errors.period?.message}
+              hint="Mes al que corresponde. Este tipo se controla mes a mes en cada legajo."
+              required
+            >
+              <Input
+                {...fieldA11y("doc-period", errors.period?.message)}
+                type="month"
+                placeholder="AAAA-MM"
+                className="w-48"
+                {...form.register("period")}
+              />
+            </FormField>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField id="doc-issue" label="Fecha de emisión" error={errors.issueDate?.message}>
               <Input

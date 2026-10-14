@@ -1,7 +1,7 @@
 import { Download, Lock } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatPeriod } from "@/lib/format";
 import { daysUntil } from "../expiry";
 import { formatFileSize } from "../files";
 import type { DocumentListItem } from "../service";
@@ -46,13 +46,16 @@ export function DocumentsTable({
       </TableHeader>
       <TableBody>
         {items.map((item) => {
-          const title = `${item.documentType.name} de ${item.employee.lastName}, ${item.employee.firstName}`;
+          const name = item.period
+            ? `${item.documentType.name} (${formatPeriod(item.period)})`
+            : item.documentType.name;
+          const title = `${name} de ${item.employee.lastName}, ${item.employee.firstName}`;
           const hint = expiryHint(item, today);
           return (
             <TableRow key={item.id} className={item.status === "ANULADO" ? "opacity-60" : undefined}>
               <TableCell className="align-top">
                 <span className="flex items-center gap-1.5 font-medium">
-                  {item.documentType.name}
+                  {name}
                   {item.documentType.isSensitive && (
                     <Lock className="text-muted-foreground size-3.5" aria-label="Sensible" />
                   )}

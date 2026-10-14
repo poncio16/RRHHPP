@@ -3,13 +3,14 @@ import { Suspense } from "react";
 import { AccessDenied } from "@/components/feedback/access-denied";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Pagination } from "@/components/list/pagination";
+import { Alert } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DocumentDialog } from "@/features/documents/components/document-dialog";
 import { DocumentFilters } from "@/features/documents/components/document-filters";
 import { DocumentsTable } from "@/features/documents/components/documents-table";
 import { loadDocumentFormData } from "@/features/documents/page-data";
-import { listDocuments } from "@/features/documents/service";
+import { getMissingRequiredDocuments, listDocuments } from "@/features/documents/service";
 import { EmployeeHeader } from "@/features/employees/components/employee-header";
 import { loadEmployeePage } from "@/features/employees/page-data";
 import { todayInTimeZone } from "@/lib/format";
@@ -32,12 +33,26 @@ async function Content({ params, searchParams }: Props) {
   if (!page.allowed || !page.canSeeDocuments) return <AccessDenied />;
   const { employee, ctx } = page;
   const query = flattenSearchParams(await searchParams);
-  const [result, form] = await Promise.all([listDocuments(ctx, query, employee.id), loadDocumentFormData(ctx)]);
+  const [result, form, missing] = await Promise.all([
+    listDocuments(ctx, query, employee.id),
+    loadDocumentFormData(ctx),
+    getMissingRequiredDocuments(ctx, employee.id),
+  ]);
   const filtered = !!(result.query.documentTypeId || result.query.expiry || result.query.status !== "vigentes");
 
   return (
     <>
       <EmployeeHeader employee={employee} current="documentacion" access={page} />
+      {missing.length > 0 && (
+        <Alert variant="warning" className="mb-4">
+          <p>Falta cargar documentación obligatoria:</p>
+          <ul className="mt-1 list-disc pl-5 font-medium">
+            {missing.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </Alert>
+      )}
       <Card>
         <div className="flex flex-col gap-2 p-3 lg:flex-row lg:items-center lg:justify-between">
           <DocumentFilters types={form.types} />

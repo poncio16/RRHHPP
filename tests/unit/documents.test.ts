@@ -3,6 +3,7 @@ import { catalogItemSchema } from "@/features/catalogs/schemas";
 import { CATALOGS } from "@/features/catalogs/definitions";
 import { daysUntil, expiryState, suggestedExpiry } from "@/features/documents/expiry";
 import { detectFileType, safeFileName } from "@/features/documents/files";
+import { describeMissing, dueMonths, lastDueMonth, missingDocuments } from "@/features/documents/required";
 import { documentSchema } from "@/features/documents/schemas";
 
 const d = (iso: string) => new Date(`${iso}T00:00:00Z`);
@@ -66,5 +67,113 @@ describe("esquemas", () => {
     expect(schema.parse(once)).toEqual(once);
     expect(schema.safeParse({ name: "X", alertDaysBefore: "1,5" }).success).toBe(false);
     expect(schema.safeParse({ name: "X", alertDaysBefore: "400" }).success).toBe(false);
+  });
+});
+
+describe("documentos obligatorios", () => {
+  const types = [
+    { id: "dni", name: "DNI", requirement: "UNA_VEZ" as const, requiredFrom: null },
+    { id: "recibo", name: "Recibo de sueldo", requirement: "MENSUAL" as const, requiredFrom: d("2026-06-01") },
+    { id: "epp", name: "Formulario de EPP", requirement: "UNA_VEZ" as const, requiredFrom: null },
+  ];
+  const doc = (documentTypeId: string, period: string | null = null) => ({
+    documentTypeId,
+    period: period ? d(`${period}-01`) : null,
+  });
+
+  it("un mes se reclama cuando pasó el plazo desde su último día", () => {
+    // Plazo de 10 días: septiembre vence el 10 de octubre inclusive.
+    expect(lastDueMonth(d("2026-10-10"), 10)).toEqual(d("2026-08-01"));
+    expect(lastDueMonth(d("2026-10-11"), 10)).toEqual(d("2026-09-01"));
+    expect(lastDueMonth(d("2026-10-01"), 0)).toEqual(d("2026-09-01"));
+    expect(lastDueMonth(d("2026-09-30"), 0)).toEqual(d("2026-08-01"));
+    expect(lastDueMonth(d("2027-01-15"), 10)).toEqual(d("2026-12-01"));
+  });
+
+  it("los meses a controlar empiezan en el de inicio o en el de ingreso, el que sea posterior", () => {
+    expect(dueMonths(d("2026-06-01"), d("2020-03-15"), d("2026-08-01"))).toEqual([
+      d("2026-06-01"),
+      d("2026-07-01"),
+      d("2026-08-01"),
+    ]);
+    expect(dueMonths(d("2026-06-01"), d("2026-07-20"), d("2026-08-01"))).toEqual([d("2026-07-01"), d("2026-08-01")]);
+    expect(dueMonths(d("2026-06-01"), d("2026-09-01"), d("2026-08-01"))).toEqual([]);
+  });
+
+  it("los de una vez faltan sin ningún documento; los mensuales, por cada mes sin el suyo", () => {
+    const lastDue = d("2026-09-01");
+    const hire = d("2019-01-01");
+    expect(missingDocuments(types, [doc("dni"), doc("otro")], hire, lastDue)).toEqual([
+      { typeId: "recibo", name: "Recibo de sueldo", months: [6, 7, 8, 9].map((m) => d(`2026-0${m}-01`)) },
+      { typeId: "epp", name: "Formulario de EPP", months: [] },
+    ]);
+    const loaded = [
+      doc("epp"),
+      doc("dni"),
+      ...["2026-06", "2026-07", "2026-09", "2026-10"].map((p) => doc("recibo", p)),
+    ];
+    expect(missingDocuments(types, loaded, hire, lastDue)).toEqual([
+      { typeId: "recibo", name: "Recibo de sueldo", months: [d("2026-08-01")] },
+    ]);
+    // Un recibo sin mes no cubre ninguno.
+    expect(missingDocuments(types.slice(1, 2), [doc("recibo")], hire, d("2026-06-01"))[0]?.months).toEqual([
+      d("2026-06-01"),
+    ]);
+    expect(missingDocuments([], [], hire, lastDue)).toEqual([]);
+  });
+
+  it("un mensual sin mes de inicio no se controla", () => {
+    const type = { id: "x", name: "X", requirement: "MENSUAL" as const, requiredFrom: null };
+    expect(missingDocuments([type], [], d("2019-01-01"), d("2026-09-01"))).toEqual([]);
+  });
+
+  it("describe lo que falta con los meses", () => {
+    const months = (...keys: string[]) => keys.map((k) => d(`${k}-01`));
+    expect(describeMissing({ typeId: "dni", name: "DNI", months: [] })).toBe("DNI");
+    const recibo = (keys: string[]) =>
+      describeMissing({ typeId: "r", name: "Recibo de sueldo", months: months(...keys) });
+    expect(recibo(["2026-09"])).toBe("Recibo de sueldo: septiembre de 2026");
+    expect(recibo(["2026-07", "2026-09"])).toBe("Recibo de sueldo: julio y septiembre de 2026");
+    expect(recibo(["2026-07", "2026-08", "2026-09"])).toBe("Recibo de sueldo: julio, agosto y septiembre de 2026");
+    expect(recibo(["2025-12", "2026-01"])).toBe("Recibo de sueldo: diciembre de 2025 y enero de 2026");
+    expect(recibo(["2025-11", "2025-12", "2026-01", "2026-03"])).toBe(
+      "Recibo de sueldo: 4 meses entre noviembre de 2025 y marzo de 2026",
+    );
+  });
+});
+
+describe("mes de un documento", () => {
+  const base = { documentTypeId: "6f1c1b3e-2f4a-4d8e-9b7a-1c2d3e4f5a6b", status: "PRESENTADO" };
+
+  it("es opcional, AAAA-MM y no posterior al mes actual", () => {
+    expect(documentSchema.parse({ ...base, period: "" }).period).toBeNull();
+    expect(documentSchema.parse({ ...base, period: "2026-01" }).period).toBe("2026-01");
+    expect(documentSchema.safeParse({ ...base, period: "2026-13" }).success).toBe(false);
+    expect(documentSchema.safeParse({ ...base, period: "2999-01" }).success).toBe(false);
+  });
+});
+
+describe("catálogo de tipos de documento", () => {
+  const schema = catalogItemSchema(CATALOGS["tipos-documento"], "create");
+
+  it("por defecto no es obligatorio", () => {
+    expect(schema.parse({ name: "Formulario de EPP" })).toMatchObject({ requirement: null, requiredFrom: null });
+    expect(schema.parse({ name: "DNI", requirement: "UNA_VEZ", requiredFrom: "" })).toMatchObject({
+      requirement: "UNA_VEZ",
+      requiredFrom: null,
+    });
+  });
+
+  it("el mensual pide desde qué mes se controla, y solo el mensual lo lleva", () => {
+    const monthly = schema.parse({ name: "Recibo de sueldo", requirement: "MENSUAL", requiredFrom: "2026-10" });
+    expect(monthly).toMatchObject({ requirement: "MENSUAL", requiredFrom: d("2026-10-01") });
+    expect(schema.parse(monthly)).toEqual(monthly);
+    const issues = (values: object) => schema.safeParse(values).error?.issues.map((i) => [i.path[0], i.message]);
+    expect(issues({ name: "Recibo", requirement: "MENSUAL" })).toEqual([
+      ["requiredFrom", "Indicá desde qué mes se controla."],
+    ]);
+    expect(issues({ name: "DNI", requirement: "UNA_VEZ", requiredFrom: "2026-10" })?.[0]?.[0]).toBe("requiredFrom");
+    expect(issues({ name: "X", requiredFrom: "2026-10" })?.[0]?.[0]).toBe("requiredFrom");
+    expect(issues({ name: "Recibo", requirement: "MENSUAL", requiredFrom: "2026-1" })?.[0]?.[0]).toBe("requiredFrom");
   });
 });

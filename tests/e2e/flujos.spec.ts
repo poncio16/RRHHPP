@@ -153,6 +153,32 @@ test.describe.serial("ciclo de un legajo", () => {
     await expect(page.locator("tbody tr").filter({ hasText: "Enfermedad" }).filter({ visible: true })).toHaveCount(1);
   });
 
+  test("formulario de entrega de EPP para imprimir", async ({ page }) => {
+    await page.goto(employeeUrl);
+    const link = page.getByRole("link", { name: "Formulario de EPP" });
+    await expect(link).toHaveAttribute("target", "_blank");
+    await page.goto(`${employeeUrl}/formulario-epp`);
+    const sheet = page.getByRole("region", {
+      name: "Formulario de entrega de ropa de trabajo y elementos de protección personal",
+    });
+    await expect(sheet).toContainText(`Nombre y apellido del trabajador: ${lastName}, ${firstName}`);
+    await expect(sheet).toContainText(`D.N.I.: ${person.dni}`);
+    await expect(sheet.locator("tbody tr")).toHaveCount(18);
+    // Al imprimir solo sale la hoja, en una página A4 apaisada.
+    await page.emulateMedia({ media: "print" });
+    await expect(page.getByRole("button", { name: "Imprimir" })).toBeHidden();
+    const pdf = await page.pdf({ preferCSSPageSize: true });
+    expect(pdf.toString("latin1").match(/\/Type\s*\/Page\b/g)).toHaveLength(1);
+    expect(pdf.toString("latin1")).toMatch(/\/MediaBox\s*\[\s*0 0 841\.\d+ 59[45]\.\d+\s*\]/);
+    // Al volver al legajo, la regla de impresión del formulario ya no oculta la aplicación.
+    await page.emulateMedia({ media: "screen" });
+    await page.getByRole("link", { name: "Volver al legajo" }).click();
+    await page.waitForURL(employeeUrl);
+    await page.emulateMedia({ media: "print" });
+    await expect(page.getByRole("heading", { name: `${lastName}, ${firstName}` })).toBeVisible();
+    await page.emulateMedia({ media: "screen" });
+  });
+
   test("egreso confirmado sin borrar el legajo", async ({ page }) => {
     await page.goto(`${employeeUrl}/historial`);
     await page.getByRole("button", { name: "Registrar egreso" }).click();
@@ -168,6 +194,12 @@ test.describe.serial("ciclo de un legajo", () => {
     // Sigue en la base, como egresado.
     await page.goto(`/empleados?status=egresados&q=${person.dni}`);
     await expect(page.getByRole("link", { name: `${lastName}, ${firstName}` }).first()).toBeVisible();
+
+    // Ya no se le arma el formulario de EPP.
+    await page.goto(employeeUrl);
+    await expect(page.getByRole("link", { name: "Formulario de EPP" })).toHaveCount(0);
+    await page.goto(`${employeeUrl}/formulario-epp`);
+    await expect(page.getByText("El empleado está egresado")).toBeVisible();
   });
 
   test("el alta queda en la auditoría", async ({ page }) => {

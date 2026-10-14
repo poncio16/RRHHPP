@@ -22,7 +22,26 @@ describe("esquemas de catálogos", () => {
 
   it("las referencias vacías se guardan como null", () => {
     const schema = catalogItemSchema(CATALOGS.puestos, "create");
-    expect(schema.parse({ name: "Vendedor", departmentId: "" })).toEqual({ name: "Vendedor", departmentId: null });
+    expect(schema.parse({ name: "Vendedor", departmentId: "" })).toEqual({
+      name: "Vendedor",
+      departmentId: null,
+      jobDescription: null,
+      requiredPpe: null,
+    });
+  });
+
+  it("los textos largos del puesto conservan los renglones y tienen tope", () => {
+    const schema = catalogItemSchema(CATALOGS.puestos, "create");
+    const parsed = schema.parse({ name: "Operario", requiredPpe: "  Guantes.\nCalzado de seguridad.  " });
+    expect(parsed).toMatchObject({ requiredPpe: "Guantes.\nCalzado de seguridad." });
+    expect(schema.safeParse({ name: "Operario", jobDescription: "x".repeat(300) }).success).toBe(true);
+    expect(schema.safeParse({ name: "Operario", jobDescription: "x".repeat(301) }).success).toBe(false);
+    expect(schema.safeParse({ name: "Operario", requiredPpe: "a\r\nb\nc\nd\ne" }).data?.requiredPpe).toBe(
+      "a\nb\nc\nd\ne",
+    );
+    expect(schema.safeParse({ name: "Operario", requiredPpe: "a\nb\nc\nd\ne\nf" }).error?.issues[0]?.message).toBe(
+      "Usá hasta 5 renglones.",
+    );
   });
 
   it("horas semanales con coma o punto decimal", () => {
@@ -60,16 +79,18 @@ describe("idempotencia de los esquemas", () => {
               : f.type === "days" || f.type === "position"
                 ? "30"
                 : f.type === "choice"
-                  ? f.options[0]!.value
-                  : f.type === "ref"
-                    ? ""
-                    : f.name === "code"
-                      ? key === "bancos"
-                        ? "011"
-                        : "ABC"
-                      : f.name === "rnosCode"
-                        ? "123456"
-                        : "Valor",
+                  ? f.options.at(-1)!.value
+                  : f.type === "month"
+                    ? "2026-01"
+                    : f.type === "ref"
+                      ? ""
+                      : f.name === "code"
+                        ? key === "bancos"
+                          ? "011"
+                          : "ABC"
+                        : f.name === "rnosCode"
+                          ? "123456"
+                          : "Valor",
         ]),
       );
       const once = schema.parse(raw);

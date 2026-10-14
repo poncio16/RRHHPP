@@ -129,6 +129,17 @@ describe("auditoría: nombres y valores", () => {
       ["Dato de salud (sensible)", "Sí"],
     ]);
     expect(diffRows(null, { code: "007" }, { entityType: "Bank" })[0]!.label).toBe("Código de entidad");
+    const documentType = diffRows(
+      { requirement: null, requiredFrom: null },
+      { requirement: "MENSUAL", requiredFrom: "2026-10" },
+      { entityType: "DocumentType" },
+    );
+    expect(documentType.map((r) => [r.label, r.before, r.after])).toEqual([
+      ["Obligatorio en todo legajo", null, "Sí, todos los meses"],
+      ["Controlar desde (mes)", null, "octubre de 2026"],
+    ]);
+    // El mes de un documento.
+    expect(diffRows(null, { period: "2026-09" }, { entityType: "Document" })[0]!.after).toBe("septiembre de 2026");
   });
 
   it("importes, horas, CUIT, permisos y listas vacías se muestran legibles", () => {

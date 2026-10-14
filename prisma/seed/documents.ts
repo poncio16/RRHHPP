@@ -7,13 +7,24 @@ import type { PrismaClient } from "../../src/generated/prisma/client";
  * Tipos de documento (datos base: los que pide el relevamiento; se editan
  * desde Configuración) y documentos de demostración para algunos empleados,
  * con sus archivos en STORAGE_DIR. Las vigencias y anticipaciones de los
- * tipos quedan vacías: dependen de cada empresa.
+ * tipos quedan vacías: dependen de cada empresa. Los obligatorios son los que
+ * indicó la empresa; los apercibimientos no, porque solo existen si hubo una
+ * sanción. El recibo de sueldo se controla mes a mes desde el mes en que se
+ * instala el sistema.
  */
-const DOCUMENT_TYPES: { name: string; isSensitive?: boolean; requiresExpiry?: boolean }[] = [
-  { name: "DNI" },
+const DOCUMENT_TYPES: {
+  name: string;
+  isSensitive?: boolean;
+  requiresExpiry?: boolean;
+  requirement?: "UNA_VEZ" | "MENSUAL";
+}[] = [
+  { name: "DNI", requirement: "UNA_VEZ" },
   { name: "CUIL" },
-  { name: "Constancia de CUIL" },
-  { name: "Alta laboral" },
+  { name: "Constancia de CUIL", requirement: "UNA_VEZ" },
+  { name: "Alta temprana firmada", requirement: "UNA_VEZ" },
+  { name: "Formulario de EPP", requirement: "UNA_VEZ" },
+  { name: "Apercibimiento" },
+  { name: "Recibo de sueldo", requirement: "MENSUAL" },
   { name: "Contrato" },
   { name: "Certificado médico", isSensitive: true },
   { name: "Licencia" },
@@ -57,19 +68,34 @@ function fromToday(days: number): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + days * DAY);
 }
 
+/** Primer día del mes actual en Argentina, corrido `months` meses. */
+function monthFromNow(months: number): Date {
+  const [year, month] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+  })
+    .format(new Date())
+    .split("-")
+    .map(Number);
+  return new Date(Date.UTC(year!, month! - 1 + months, 1));
+}
+
 type DemoDocument = {
   file: number;
   type: string;
   status?: "PRESENTADO" | "PENDIENTE" | "OBSERVADO";
   issue?: number;
   expiry?: number;
+  /** Mes del documento (los mensuales), relativo al actual. */
+  period?: number;
   notes?: string;
   attach?: boolean;
 };
 
 const DEMO: DemoDocument[] = [
   { file: 1, type: "DNI", issue: -2000, attach: true },
-  { file: 1, type: "Alta laboral", issue: -6000 },
+  { file: 1, type: "Alta temprana firmada", issue: -6000 },
   { file: 4, type: "DNI", issue: -1500, attach: true },
   { file: 4, type: "Certificado", issue: -340, expiry: 25, notes: "Curso de primeros auxilios.", attach: true },
   { file: 5, type: "Constancia de CUIL", status: "PENDIENTE", notes: "Se pidió al empleado." },
@@ -80,14 +106,26 @@ const DEMO: DemoDocument[] = [
   { file: 20, type: "Documentación de obra social", status: "OBSERVADO", notes: "Falta la firma." },
   { file: 21, type: "Certificado", issue: -360, expiry: 5, notes: "Licencia de conducir profesional." },
   { file: 23, type: "Contrato", issue: -180, expiry: 185, attach: true },
-  { file: 24, type: "Alta laboral", issue: -65, attach: true },
+  { file: 24, type: "Alta temprana firmada", issue: -65, attach: true },
+  { file: 1, type: "Recibo de sueldo", period: -1, issue: -10, attach: true },
 ];
 
-/** Datos base: tipos de documento. Devuelve cuántos creó. */
+/**
+ * Datos base: tipos de documento. Devuelve cuántos creó. Los obligatorios se
+ * marcan solo en una instalación nueva: en las demás los marcó la migración y
+ * un tipo que la empresa renombró volvería como obligatorio sin documentos.
+ */
 export async function seedDocumentTypes(db: PrismaClient): Promise<number> {
-  const existingTypes = new Set((await db.documentType.findMany()).map((t) => t.name));
+  const existingTypes = new Set((await db.documentType.findMany()).map((t) => t.name.toLocaleLowerCase("es")));
+  const fresh = existingTypes.size === 0;
   const { count } = await db.documentType.createMany({
-    data: DOCUMENT_TYPES.map((t, sortOrder) => ({ ...t, sortOrder })).filter((t) => !existingTypes.has(t.name)),
+    data: DOCUMENT_TYPES.map(({ requirement, ...t }, sortOrder) => ({
+      ...t,
+      sortOrder,
+      ...(fresh && requirement
+        ? { requirement, requiredFrom: requirement === "MENSUAL" ? monthFromNow(0) : null }
+        : {}),
+    })).filter((t) => !existingTypes.has(t.name.toLocaleLowerCase("es"))),
   });
   return count;
 }
@@ -140,6 +178,7 @@ export async function seedDemoDocuments(db: PrismaClient): Promise<number> {
         status: demo.status ?? "PRESENTADO",
         issueDate: demo.issue === undefined ? null : fromToday(demo.issue),
         expiryDate: demo.expiry === undefined ? null : fromToday(demo.expiry),
+        period: demo.period === undefined ? null : monthFromNow(demo.period),
         notes: demo.notes ?? null,
         fileId,
         createdById: admin.id,
