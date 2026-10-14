@@ -13,12 +13,13 @@ ADD COLUMN     "requirement" "DocumentRequirement";
 
 -- En las instalaciones que ya tienen tipos de documento (las nuevas los crea
 -- el seed) se aplica lo que pidió la empresa; después se cambia en
--- Configuración → Tipos de documento.
+-- Configuración → Tipos de documento. Los nombres se comparan sin distinguir
+-- mayúsculas, como en el catálogo.
 -- "Alta laboral" pasa a llamarse como la nombra la empresa: los documentos ya
 -- cargados con ese tipo siguen contando.
 UPDATE "document_type" SET "name" = 'Alta temprana firmada', "updated_at" = now()
-WHERE "name" = 'Alta laboral'
-  AND NOT EXISTS (SELECT 1 FROM "document_type" WHERE "name" = 'Alta temprana firmada');
+WHERE lower("name") = 'alta laboral'
+  AND NOT EXISTS (SELECT 1 FROM "document_type" WHERE lower("name") = 'alta temprana firmada');
 
 INSERT INTO "document_type" ("id", "name", "sort_order", "updated_at")
 SELECT gen_random_uuid(), t."name", COALESCE((SELECT MAX("sort_order") FROM "document_type"), 0) + t."position", now()
@@ -29,14 +30,15 @@ FROM (VALUES
   ('Recibo de sueldo', 4)
 ) AS t("name", "position")
 WHERE EXISTS (SELECT 1 FROM "document_type")
+  AND NOT EXISTS (SELECT 1 FROM "document_type" d WHERE lower(d."name") = lower(t."name"))
 ON CONFLICT ("name") DO NOTHING;
 
 UPDATE "document_type" SET "requirement" = 'UNA_VEZ', "updated_at" = now()
-WHERE "name" IN ('DNI', 'Constancia de CUIL', 'Alta temprana firmada', 'Formulario de EPP');
+WHERE lower("name") IN ('dni', 'constancia de cuil', 'alta temprana firmada', 'formulario de epp');
 
 -- Los recibos se controlan desde el mes en curso: los anteriores no se reclaman.
 UPDATE "document_type"
 SET "requirement" = 'MENSUAL',
     "required_from" = date_trunc('month', now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,
     "updated_at" = now()
-WHERE "name" = 'Recibo de sueldo';
+WHERE lower("name") = 'recibo de sueldo';

@@ -86,13 +86,13 @@ enum SalaryConceptKind {
   OTRO
 }
 
-/// Hechos de otros módulos que generan novedades (cada uno, con un único tipo de novedad).
 /// Documentos que debe tener todo legajo activo.
 enum DocumentRequirement {
   UNA_VEZ
   MENSUAL
 }
 
+/// Hechos de otros módulos que generan novedades (cada uno, con un único tipo de novedad).
 enum NoveltyOrigin {
   HORAS_EXTRAS
   LLEGADAS_TARDE

@@ -270,6 +270,34 @@ describe("documentos mensuales", () => {
     );
   });
 
+  it("si el tipo deja de ser mensual, editar el documento conserva su mes", async () => {
+    const recibo = await db.documentType.create({
+      data: { name: label("Recibo editable"), requirement: "MENSUAL", requiredFrom: months[0] },
+    });
+    const period = periodKey(months[1]!);
+    const { id } = await documents.createDocument(rrhh, people.sinNada, input(recibo.id, period), null);
+    await db.documentType.update({ where: { id: recibo.id }, data: { requirement: null, requiredFrom: null } });
+    const version = async () => (await db.document.findUniqueOrThrow({ where: { id } })).updatedAt.toISOString();
+    // El formulario ya no muestra el mes: llega vacío o con el que tenía.
+    await documents.updateDocument(rrhh, id, { ...input(recibo.id), notes: "Firmado", version: await version() }, null);
+    expect(await db.document.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      period: months[1],
+      notes: "Firmado",
+    });
+    // Un tipo mensual desactivado tampoco pide el mes al editar.
+    await db.documentType.update({ where: { id: recibo.id }, data: { requirement: "MENSUAL", isActive: false } });
+    const sinMes = await db.document.create({
+      data: { employeeId: people.sinNada, documentTypeId: recibo.id, status: "PENDIENTE" },
+    });
+    await documents.updateDocument(
+      rrhh,
+      sinMes.id,
+      { ...input(recibo.id), version: sinMes.updatedAt.toISOString() },
+      null,
+    );
+    expect((await db.document.findUniqueOrThrow({ where: { id: sinMes.id } })).status).toBe("PRESENTADO");
+  });
+
   it("no acepta un mes posterior al actual", async () => {
     const next = addMonths(todayInTimeZone(), 1);
     await expect(

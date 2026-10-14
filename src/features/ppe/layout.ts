@@ -19,8 +19,10 @@ const BOX_ROW_MIN_MM = 22;
 const NOTES_MIN_MM = 8;
 /** Margen para diferencias entre la estimación y el navegador. */
 const SAFETY_MM = 3;
-/** Sangría de cada casillero (lugar para la referencia) más el margen derecho, en mm. */
-const CELL_PADDING_MM = 7;
+/** Un píxel CSS, en mm: los bordes miden 1 px. */
+const PX_MM = 25.4 / 96;
+/** Sangría de cada casillero (lugar para la referencia), margen derecho (4 px) y borde derecho, en mm. */
+const CELL_PADDING_MM = 6 + 4 * PX_MM + PX_MM;
 /** Relleno vertical de (9) y (10) más el espacio entre el título y el texto, en mm. */
 const BOX_PADDING_MM = 2.3;
 
@@ -99,7 +101,8 @@ export function estimateLines(text: string, widthMm: number, pt: number, scale =
 }
 
 const lineMm = (pt: number) => pt * LINE_HEIGHT * MM_PER_PT;
-const cellWidth = (percent: number) => (SHEET_WIDTH_MM * percent) / 100 - CELL_PADDING_MM;
+/** Ancho útil de un casillero que ocupa `percent` de la hoja (dentro del borde de 1 px). */
+const cellWidth = (percent: number) => ((SHEET_WIDTH_MM - 2 * PX_MM) * percent) / 100 - CELL_PADDING_MM;
 
 type Field = { reference: number; percent: number; label: string; value: (form: PpeForm) => string | undefined };
 
@@ -183,6 +186,7 @@ export function layoutPpeForm(form: PpeForm): PpeLayout {
         return lines * lineMm(pt) + BOX_PADDING_MM;
       }),
     );
-  const box = FONT_SIZES.find((pt) => boxMm(pt) <= boxMaxMm);
+  // Medio renglón de margen: la fila se corta justo en `boxMaxMm`.
+  const box = FONT_SIZES.find((pt) => boxMm(pt) + lineMm(pt) / 2 <= boxMaxMm);
   return { fields, box: box ?? 7, boxMaxMm: Math.max(BOX_ROW_MIN_MM, boxMaxMm), fits: box !== undefined };
 }

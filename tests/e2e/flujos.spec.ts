@@ -170,6 +170,13 @@ test.describe.serial("ciclo de un legajo", () => {
     const pdf = await page.pdf({ preferCSSPageSize: true });
     expect(pdf.toString("latin1").match(/\/Type\s*\/Page\b/g)).toHaveLength(1);
     expect(pdf.toString("latin1")).toMatch(/\/MediaBox\s*\[\s*0 0 841\.\d+ 59[45]\.\d+\s*\]/);
+    // Al volver al legajo, la regla de impresión del formulario ya no oculta la aplicación.
+    await page.emulateMedia({ media: "screen" });
+    await page.getByRole("link", { name: "Volver al legajo" }).click();
+    await page.waitForURL(employeeUrl);
+    await page.emulateMedia({ media: "print" });
+    await expect(page.getByRole("heading", { name: `${lastName}, ${firstName}` })).toBeVisible();
+    await page.emulateMedia({ media: "screen" });
   });
 
   test("egreso confirmado sin borrar el legajo", async ({ page }) => {

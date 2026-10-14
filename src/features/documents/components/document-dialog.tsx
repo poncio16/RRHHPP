@@ -251,8 +251,10 @@ export function DocumentDialog({
               {...form.register("documentTypeId", {
                 // El mes solo se usa en los tipos mensuales: al cambiar a otro tipo se descarta.
                 onChange: (e) => {
-                  if (types.find((t) => t.id === e.target.value)?.requirement !== "MENSUAL")
+                  if (types.find((t) => t.id === e.target.value)?.requirement !== "MENSUAL") {
                     form.setValue("period", "");
+                    form.clearErrors("period");
+                  }
                 },
               })}
             >
@@ -265,7 +267,8 @@ export function DocumentDialog({
               ))}
             </Select>
           </FormField>
-          {monthly && (
+          {/* También si el servidor pide el mes (el tipo pasó a mensual después de abrir la pantalla). */}
+          {(monthly || !!errors.period) && (
             <FormField
               id="doc-period"
               label="Mes"

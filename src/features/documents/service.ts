@@ -204,19 +204,29 @@ async function validateType(ctx: ActorContext, data: DocumentData, currentTypeId
   if (type.requiresExpiry && !data.expiryDate) {
     throw new ValidationError(undefined, { expiryDate: [`"${type.name}" requiere fecha de vencimiento.`] });
   }
-  if (type.requirement === "MENSUAL" && !data.period) {
+  // Un tipo inactivo ya no se controla: sus documentos se pueden editar sin mes.
+  if (type.isActive && type.requirement === "MENSUAL" && !data.period) {
     throw new ValidationError(undefined, { period: [`Indicá el mes al que corresponde "${type.name}".`] });
   }
   return type;
 }
 
-/** El mes solo se guarda en los tipos que se controlan mes a mes. */
-function toRecord(data: DocumentData, type: { requirement: string | null }) {
+/**
+ * El mes se carga en los tipos que se controlan mes a mes. Si el tipo dejó de
+ * ser mensual, al editar se conserva el que tenía (`current`): el formulario
+ * ya no lo muestra y el tipo puede volver a controlarse.
+ */
+function toRecord(
+  data: DocumentData,
+  type: { id: string; requirement: string | null },
+  current?: { documentTypeId: string; period: Date | null },
+) {
+  const kept = current?.documentTypeId === type.id ? current.period : null;
   return {
     documentTypeId: data.documentTypeId,
     issueDate: data.issueDate ? parseIsoDate(data.issueDate) : null,
     expiryDate: data.expiryDate ? parseIsoDate(data.expiryDate) : null,
-    period: type.requirement === "MENSUAL" && data.period ? parsePeriod(data.period) : null,
+    period: type.requirement === "MENSUAL" ? (data.period ? parsePeriod(data.period) : kept) : kept,
     status: data.status,
     notes: data.notes,
   };
@@ -343,7 +353,7 @@ export async function updateDocument(ctx: ActorContext, id: string, input: unkno
   await withStoredFile(prepared, () =>
     repo.transaction(async (tx) => {
       const fileId = (await storeFileRecord(ctx, prepared, tx)) ?? current.fileId;
-      const next = { ...toRecord(data, type), fileId };
+      const next = { ...toRecord(data, type, current), fileId };
       const ok = await repo.updateDocumentVersioned(id, new Date(version), { ...next, updatedById: ctx.userId }, tx);
       if (!ok) throw conflict();
       const diff = auditDiff(auditable(current), auditable(next));

@@ -110,15 +110,22 @@ const DEMO: DemoDocument[] = [
   { file: 1, type: "Recibo de sueldo", period: -1, issue: -10, attach: true },
 ];
 
-/** Datos base: tipos de documento. Devuelve cuántos creó. */
+/**
+ * Datos base: tipos de documento. Devuelve cuántos creó. Los obligatorios se
+ * marcan solo en una instalación nueva: en las demás los marcó la migración y
+ * un tipo que la empresa renombró volvería como obligatorio sin documentos.
+ */
 export async function seedDocumentTypes(db: PrismaClient): Promise<number> {
-  const existingTypes = new Set((await db.documentType.findMany()).map((t) => t.name));
+  const existingTypes = new Set((await db.documentType.findMany()).map((t) => t.name.toLocaleLowerCase("es")));
+  const fresh = existingTypes.size === 0;
   const { count } = await db.documentType.createMany({
-    data: DOCUMENT_TYPES.map((t, sortOrder) => ({
+    data: DOCUMENT_TYPES.map(({ requirement, ...t }, sortOrder) => ({
       ...t,
       sortOrder,
-      requiredFrom: t.requirement === "MENSUAL" ? monthFromNow(0) : null,
-    })).filter((t) => !existingTypes.has(t.name)),
+      ...(fresh && requirement
+        ? { requirement, requiredFrom: requirement === "MENSUAL" ? monthFromNow(0) : null }
+        : {}),
+    })).filter((t) => !existingTypes.has(t.name.toLocaleLowerCase("es"))),
   });
   return count;
 }
