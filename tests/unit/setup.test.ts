@@ -40,7 +40,7 @@ const unchecked: SetupCounts = {
   admins: null,
   employees: null,
 };
-const all = { today: d("2026-12-10"), canCreateEmployee: true, canImport: true };
+const all = { today: d("2026-12-10"), canCreateEmployee: true, canImport: true, canCreateCatalogs: true };
 const keys = (counts: SetupCounts, options = all) => setupSteps(counts, options).map((s) => s.key);
 
 describe("puesta en marcha", () => {
@@ -100,6 +100,21 @@ describe("puesta en marcha", () => {
     expect(links({ ...all, canImport: false })).toEqual(["/empleados/nuevo"]);
     expect(links({ ...all, canCreateEmployee: false })).toEqual(["/importar"]);
     expect(links({ ...all, canCreateEmployee: false, canImport: false })).toBeUndefined();
+  });
+
+  it("si la importación puede dar de alta sectores, puestos y establecimientos, no los pide antes", () => {
+    const detail = (options: typeof all) =>
+      setupSteps({ ...done, employees: 0 }, options).find((s) => s.key === "personal")?.detail;
+    expect(detail(all)).toBe(
+      "De a un legajo (antes hacen falta sectores, puestos y establecimientos) o con la planilla de importación, que da de alta los que falten.",
+    );
+    expect(detail({ ...all, canCreateEmployee: false })).toBe(
+      "Con la planilla de importación, que da de alta los sectores, puestos y establecimientos que falten.",
+    );
+    const before =
+      "De a un legajo o con la planilla de importación. Antes hacen falta sectores, puestos y establecimientos.";
+    expect(detail({ ...all, canCreateCatalogs: false })).toBe(before);
+    expect(detail({ ...all, canImport: false })).toBe(before);
   });
 
   it("los feriados llevan a la pantalla filtrada por su año", () => {

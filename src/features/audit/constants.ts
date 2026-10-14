@@ -224,6 +224,7 @@ export const FIELD_LABELS: Record<string, string> = {
   totalRows: "Filas leídas",
   created: "Legajos creados",
   skipped: "Filas sin importar",
+  catalogItems: "Valores nuevos en Catálogos",
   sourceType: "Origen",
   sourceId: "Registro de origen",
   status: "Estado",

@@ -1,3 +1,5 @@
+import { CATALOGS } from "@/features/catalogs/definitions";
+
 /*
  * Columnas de la plantilla de importación de empleados. Los catálogos se
  * escriben por nombre (sin distinguir mayúsculas ni acentos) y se buscan entre
@@ -171,6 +173,25 @@ export const IMPORT_COLUMNS: ImportColumn[] = [
     help: "Como figura en Catálogos.",
   },
 ];
+
+/**
+ * Catálogos que la importación completa: un sector, puesto o establecimiento
+ * que no existe (ni activo ni desactivado) se da de alta al confirmar, con
+ * solo el nombre, si quien importa administra los catálogos. Son la estructura
+ * propia de la empresa; convenios, obras sociales y el resto se cargan a mano.
+ */
+export const CREATABLE_LOOKUPS = ["sectores", "puestos", "establecimientos"] as const satisfies readonly LookupKey[];
+export type CreatableLookup = (typeof CREATABLE_LOOKUPS)[number];
+
+export function isCreatable(key: LookupKey): key is CreatableLookup {
+  return (CREATABLE_LOOKUPS as readonly LookupKey[]).includes(key);
+}
+
+/** Largo máximo del nombre de un valor nuevo: el mismo del formulario del catálogo. */
+export function newNameMax(key: CreatableLookup): number {
+  const field = CATALOGS[key].fields.find((f) => f.name === "name");
+  return field?.type === "text" ? (field.max ?? 200) : 200;
+}
 
 /** Tope de filas por archivo: una PyME no da de alta más de una vez. */
 export const IMPORT_MAX_ROWS = 500;

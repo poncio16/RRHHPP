@@ -27,7 +27,7 @@ export function RowsTable({ rows }: { rows: Omit<ImportRow, "input">[] }) {
                 DNI {row.dni || "—"}
                 {row.fileNumber ? ` · Legajo ${row.fileNumber}` : ""}
               </span>
-              <Problems errors={row.errors} className="mt-1 md:hidden" />
+              <Problems errors={row.errors} notes={row.notes} className="mt-1 md:hidden" />
             </TableCell>
             <TableCell className="hidden align-top tabular-nums sm:table-cell">{row.dni || "—"}</TableCell>
             <TableCell className="hidden text-right align-top tabular-nums sm:table-cell">
@@ -37,7 +37,7 @@ export function RowsTable({ rows }: { rows: Omit<ImportRow, "input">[] }) {
               <Badge variant={ROW_STATUS[row.status].variant}>{ROW_STATUS[row.status].label}</Badge>
             </TableCell>
             <TableCell className="hidden align-top md:table-cell">
-              <Problems errors={row.errors} />
+              <Problems errors={row.errors} notes={row.notes} />
             </TableCell>
           </TableRow>
         ))}
@@ -46,13 +46,21 @@ export function RowsTable({ rows }: { rows: Omit<ImportRow, "input">[] }) {
   );
 }
 
-function Problems({ errors, className }: { errors: string[]; className?: string }) {
-  if (errors.length === 0) return null;
+/** Lo que hay que corregir y, en las válidas, los valores nuevos de Catálogos que usa. */
+function Problems({ errors, notes = [], className }: { errors: string[]; notes?: string[]; className?: string }) {
+  if (errors.length === 0 && notes.length === 0) return null;
   return (
-    <ul className={`text-muted-foreground list-disc space-y-0.5 pl-4 text-xs ${className ?? ""}`}>
-      {errors.map((error) => (
-        <li key={error}>{error}</li>
+    <div className={`space-y-0.5 text-xs ${className ?? ""}`}>
+      {errors.length > 0 && (
+        <ul className="text-muted-foreground list-disc space-y-0.5 pl-4">
+          {errors.map((error) => (
+            <li key={error}>{error}</li>
+          ))}
+        </ul>
+      )}
+      {notes.map((note) => (
+        <p key={note}>{note}</p>
       ))}
-    </ul>
+    </div>
   );
 }

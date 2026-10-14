@@ -11,11 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { StatTile } from "@/features/dashboard/components/stat-tile";
 import { JobActions } from "@/features/imports/components/job-actions";
+import { NewItems } from "@/features/imports/components/new-items";
 import { RowsTable } from "@/features/imports/components/rows-table";
 import { JOB_STATUS } from "@/features/imports/constants";
-import { canImport, getImportJob } from "@/features/imports/service";
+import { canCreateCatalogItems, canImport, getImportJob } from "@/features/imports/service";
 import { formatDateTime } from "@/lib/format";
 import { requirePageAccess } from "@/server/auth/request";
+import { PERMISSION_LABELS } from "@/server/authz/permissions";
 import { NotFoundError } from "@/server/errors";
 import { z } from "@/lib/zod";
 
@@ -51,8 +53,11 @@ async function Content({ params, searchParams }: Props) {
         ? row.status === "VALIDA" || row.status === "CREADA"
         : row.status === "ERROR" || row.status === "DUPLICADA",
   );
-  const { summary } = job;
+  const { summary, newItems } = job;
   const pending = job.status === "VALIDADO";
+  const catalogsAdmin = canCreateCatalogItems(access.ctx);
+  // Lo validó alguien que administra los catálogos; quien mira, no.
+  const blocked = pending && newItems.length > 0 && !catalogsAdmin;
 
   return (
     <>
@@ -95,8 +100,31 @@ async function Content({ params, searchParams }: Props) {
                 : "Todas las filas son válidas. Revisalas y confirmá para crear los legajos."}
           </Alert>
         )}
-        {job.status === "DESCARTADO" && <Alert variant="info">Se descartó sin crear legajos.</Alert>}
-        {pending && <JobActions id={job.id} valid={summary.valid} skipped={summary.errors + summary.duplicates} />}
+        {newItems.length > 0 && job.status !== "DESCARTADO" && (
+          <NewItems items={newItems} created={job.status === "CONFIRMADO"} links={!pending && catalogsAdmin} />
+        )}
+        {blocked && (
+          <Alert variant="warning">
+            Esta importación da de alta valores nuevos en Catálogos: para confirmarla hace falta el permiso &ldquo;
+            {PERMISSION_LABELS["config:catalogs"]}&rdquo;. Pedile a quien lo tenga que la confirme, o descartala.
+          </Alert>
+        )}
+        {job.status === "DESCARTADO" && (
+          <Alert variant="info">
+            {newItems.length > 0
+              ? "Se descartó sin crear legajos ni valores en Catálogos."
+              : "Se descartó sin crear legajos."}
+          </Alert>
+        )}
+        {pending && (
+          <JobActions
+            id={job.id}
+            valid={summary.valid}
+            skipped={summary.errors + summary.duplicates}
+            newItems={newItems.length}
+            blocked={blocked}
+          />
+        )}
       </div>
 
       <Card>
