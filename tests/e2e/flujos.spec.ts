@@ -187,6 +187,12 @@ test.describe.serial("ciclo de un legajo", () => {
     // Sigue en la base, como egresado.
     await page.goto(`/empleados?status=egresados&q=${person.dni}`);
     await expect(page.getByRole("link", { name: `${lastName}, ${firstName}` }).first()).toBeVisible();
+
+    // Ya no se le arma el formulario de EPP.
+    await page.goto(employeeUrl);
+    await expect(page.getByRole("link", { name: "Formulario de EPP" })).toHaveCount(0);
+    await page.goto(`${employeeUrl}/formulario-epp`);
+    await expect(page.getByText("El empleado está egresado")).toBeVisible();
   });
 
   test("el alta queda en la auditoría", async ({ page }) => {

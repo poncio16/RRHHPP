@@ -90,18 +90,19 @@ export async function listDocuments(
 
 /** Tipos obligatorios activos, en el orden del catálogo; sin los sensibles si no se pueden ver. */
 export async function requiredDocumentTypes(includeSensitive: boolean) {
-  return db.documentType.findMany({
-    where: { isRequired: true, isActive: true, ...(includeSensitive ? {} : { isSensitive: false }) },
-    select: { id: true, name: true },
+  const types = await db.documentType.findMany({
+    where: { requirement: { not: null }, isActive: true, ...(includeSensitive ? {} : { isSensitive: false }) },
+    select: { id: true, name: true, requirement: true, requiredFrom: true },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
+  return types.flatMap(({ requirement, ...type }) => (requirement ? [{ ...type, requirement }] : []));
 }
 
 /**
- * Empleados activos con los tipos (de entre `typeIds`) de los que tienen
- * algún documento sin anular. `q` busca por legajo o por apellido y nombre.
+ * Empleados activos con sus documentos sin anular de los tipos `typeIds`
+ * (tipo y mes). `q` busca por legajo o por apellido y nombre.
  */
-export async function activeEmployeesWithDocumentTypes(typeIds: string[], filter: { q?: string; employeeId?: string }) {
+export async function activeEmployeesWithDocuments(typeIds: string[], filter: { q?: string; employeeId?: string }) {
   const and: Prisma.EmployeeWhereInput[] = [{ status: "ACTIVO" }];
   if (filter.employeeId) and.push({ id: filter.employeeId });
   if (filter.q) {
@@ -115,10 +116,11 @@ export async function activeEmployeesWithDocumentTypes(typeIds: string[], filter
       fileNumber: true,
       lastName: true,
       firstName: true,
+      hireDate: true,
       department: { select: { name: true } },
       documents: {
         where: { documentTypeId: { in: typeIds }, status: { not: "ANULADO" } },
-        select: { documentTypeId: true },
+        select: { documentTypeId: true, period: true },
       },
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -148,6 +150,7 @@ export async function listTypeOptions(includeSensitive: boolean, includeIds: str
       isSensitive: true,
       requiresExpiry: true,
       defaultValidityDays: true,
+      requirement: true,
     },
   });
 }

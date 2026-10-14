@@ -8,10 +8,11 @@ import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PpeFormSheet } from "@/features/ppe/components/ppe-form-sheet";
+import { layoutPpeForm } from "@/features/ppe/layout";
 import { getPpeForm } from "@/features/ppe/service";
 import { z } from "@/lib/zod";
 import { requirePageAccess } from "@/server/auth/request";
-import { NotFoundError } from "@/server/errors";
+import { ConflictError, NotFoundError } from "@/server/errors";
 
 export const metadata: Metadata = { title: "Formulario de entrega de EPP" };
 
@@ -32,8 +33,22 @@ async function Content({ params }: { params: PageProps<"/empleados/[id]/formular
   if (!parsed.success) notFound();
   const form = await getPpeForm(access.ctx, parsed.data).catch((error: unknown) => {
     if (error instanceof NotFoundError) notFound();
+    if (error instanceof ConflictError) return error;
     throw error;
   });
+  if (form instanceof ConflictError) {
+    return (
+      <div className="flex max-w-xl flex-col items-start gap-3">
+        <h1 className="text-xl font-semibold tracking-tight">Formulario de entrega de EPP</h1>
+        <Alert variant="warning">{form.message}</Alert>
+        <Link href={`/empleados/${parsed.data}`} className={buttonVariants({ variant: "outline" })}>
+          Volver al legajo
+        </Link>
+      </div>
+    );
+  }
+
+  const layout = layoutPpeForm(form);
 
   return (
     <div className="flex flex-col gap-4">
@@ -53,6 +68,12 @@ async function Content({ params }: { params: PageProps<"/empleados/[id]/formular
             <PrintButton />
           </div>
         </div>
+        {!layout.fits && (
+          <Alert variant="warning">
+            La descripción o los elementos de protección del puesto «{form.position.name}» son demasiado largos para que
+            el formulario entre en una hoja y se cortan al imprimir: acortalos en Configuración → Catálogos → Puestos.
+          </Alert>
+        )}
         {form.missing.length > 0 && (
           <Alert variant="warning">
             <p className="font-medium">Estos datos van a salir en blanco:</p>
@@ -66,7 +87,7 @@ async function Content({ params }: { params: PageProps<"/empleados/[id]/formular
       </div>
       <div className="overflow-x-auto print:overflow-visible">
         <div className="w-fit shadow-sm ring-1 ring-black/10 print:shadow-none print:ring-0">
-          <PpeFormSheet form={form} />
+          <PpeFormSheet form={form} layout={layout} />
         </div>
       </div>
     </div>

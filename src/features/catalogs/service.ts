@@ -1,4 +1,5 @@
 import "server-only";
+import { formatPeriod, periodKey } from "@/lib/format";
 import { paginate } from "@/lib/list/query";
 import { auditDiff, recordAudit, sanitizeForAudit } from "@/server/audit";
 import { assertPermission } from "@/server/authz";
@@ -34,6 +35,7 @@ function toFormValue(field: CatalogField, row: Record<string, unknown>): string 
   const value = row[field.name];
   if (field.type === "boolean") return value === true;
   if (value === null || value === undefined) return "";
+  if (field.type === "month" && value instanceof Date) return periodKey(value);
   return String(value);
 }
 
@@ -46,6 +48,7 @@ function toDisplay(field: CatalogField, row: Record<string, unknown>): string {
   }
   if (field.type === "hours") return String(value).replace(".", ",");
   if (field.type === "choice") return field.options.find((o) => o.value === value)?.label ?? "—";
+  if (field.type === "month") return value instanceof Date ? formatPeriod(value) : "—";
   return value === null || value === undefined || value === "" ? "—" : String(value);
 }
 
@@ -61,7 +64,11 @@ function toListItem(def: CatalogDefinition, row: repo.CatalogRow): CatalogListIt
 
 /** Datos del registro que se guardan en la auditoría. */
 function auditable(def: CatalogDefinition, row: Record<string, unknown>) {
-  return Object.fromEntries([...def.fields.map((f) => [f.name, row[f.name]]), ["isActive", row.isActive]]);
+  const value = (f: CatalogField) => {
+    const v = row[f.name];
+    return f.type === "month" && v instanceof Date ? periodKey(v) : v;
+  };
+  return Object.fromEntries([...def.fields.map((f) => [f.name, value(f)]), ["isActive", row.isActive]]);
 }
 
 export async function listCatalog(ctx: ActorContext, key: CatalogKey, rawQuery: unknown) {

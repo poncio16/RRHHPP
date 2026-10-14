@@ -96,6 +96,34 @@ describe("catálogos", () => {
     expect(list.items[0]?.display.departmentId).toBe(`Ref ${suffix}`);
   });
 
+  it("guarda el mes desde el que se controla un documento mensual y lo audita como mes", async () => {
+    const name = `Recibo mensual ${suffix}`;
+    const input = { name, requirement: "MENSUAL", requiredFrom: "2026-01" };
+    const { id } = await catalogs.createCatalogItem(rrhh, "tipos-documento", input);
+    expect(await db.documentType.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      requirement: "MENSUAL",
+      requiredFrom: new Date("2026-01-01T00:00:00Z"),
+    });
+    expect((await lastAudit({ entityId: id }))?.after).toMatchObject({ requiredFrom: "2026-01" });
+    await catalogs.updateCatalogItem(rrhh, "tipos-documento", id, { ...input, requiredFrom: "2026-03" });
+    expect(await lastAudit({ entityId: id })).toMatchObject({
+      before: { requiredFrom: "2026-01" },
+      after: { requiredFrom: "2026-03" },
+    });
+    const [item] = (await catalogs.listCatalog(rrhh, "tipos-documento", { q: name })).items;
+    expect(item).toMatchObject({
+      display: { requirement: "Sí, todos los meses", requiredFrom: "marzo de 2026" },
+      formValues: { requirement: "MENSUAL", requiredFrom: "2026-03" },
+    });
+    const error = await appErrorOf(
+      catalogs.updateCatalogItem(rrhh, "tipos-documento", id, { ...input, requiredFrom: "" }),
+    );
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as ValidationError).fieldErrors).toEqual({ requiredFrom: ["Indicá desde qué mes se controla."] });
+    // Que no se controle en las demás pruebas.
+    await catalogs.setCatalogItemActive(rrhh, "tipos-documento", id, false);
+  });
+
   it("Consulta no puede administrar catálogos", async () => {
     await expect(catalogs.listCatalog(consulta, "sectores", {})).rejects.toBeInstanceOf(ForbiddenError);
     await expect(catalogs.createCatalogItem(consulta, "sectores", { name: "X" })).rejects.toBeInstanceOf(

@@ -2,7 +2,7 @@ import "server-only";
 import { formatCuil } from "@/lib/validators/cuil";
 import { assertPermission } from "@/server/authz";
 import type { ActorContext } from "@/server/context";
-import { NotFoundError } from "@/server/errors";
+import { ConflictError, NotFoundError } from "@/server/errors";
 import * as repo from "./repository";
 
 const MODULE = "empleados";
@@ -22,13 +22,17 @@ export type PpeForm = {
  * Formulario de entrega de ropa de trabajo y elementos de protección personal
  * de un empleado, con el encabezado completo. Los renglones de entrega se
  * llenan a mano y los firma el trabajador. Lleva el DNI, así que pide el
- * permiso de datos personales. Como la ficha, no se audita cada vista.
+ * permiso de datos personales. No se arma para egresados. Como la ficha, no
+ * se audita cada vista.
  */
 export async function getPpeForm(ctx: ActorContext, employeeId: string): Promise<PpeForm> {
   await assertPermission(ctx, "employee:read", MODULE);
   await assertPermission(ctx, "employee.personal:read", MODULE);
   const [employee, company] = await Promise.all([repo.findEmployeeForPpeForm(employeeId), repo.findCompanyHeading()]);
   if (!employee) throw new NotFoundError("No se encontró el empleado.");
+  if (employee.status === "EGRESADO") {
+    throw new ConflictError("El empleado está egresado: el formulario de EPP se imprime solo para el personal activo.");
+  }
 
   const { workplace, position } = employee;
   const missing: string[] = [];

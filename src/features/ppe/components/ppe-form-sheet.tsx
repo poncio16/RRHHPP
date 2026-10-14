@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { DESCRIPTION_BOX, FIELD_ROWS, type FontSize, PPE_BOX, type PpeLayout, SHEET_HEIGHT_MM } from "../layout";
 import type { PpeForm } from "../service";
 
 /** Renglones de entrega del modelo (Resolución SRT 299/11, Anexo I). */
@@ -15,57 +16,52 @@ const ITEM_COLUMNS = [
   { ref: 17, label: "Firma del trabajador", width: "26.8%" },
 ] as const;
 
+const FONT_CLASS: Record<FontSize, string> = { 9: "text-[9pt]", 8: "text-[8pt]", 7: "text-[7pt]" };
+
 /**
  * Formulario de entrega de ropa de trabajo y elementos de protección personal,
  * con el diseño del modelo que usa la empresa: A4 apaisado, encabezado
  * completo y renglones en blanco para completar a mano. No lleva firma de la
- * empresa. Las medidas están en milímetros para que el impreso coincida.
+ * empresa. Las medidas están en milímetros para que el impreso coincida; la
+ * hoja tiene alto fijo y la letra de los datos largos se ajusta (`layout`).
  */
-export function PpeFormSheet({ form }: { form: PpeForm }) {
-  const { company, place, worker, position } = form;
+export function PpeFormSheet({ form, layout }: { form: PpeForm; layout: PpeLayout }) {
   return (
     <section
       data-print-sheet
       aria-label="Formulario de entrega de ropa de trabajo y elementos de protección personal"
       className="w-[285mm] bg-white font-['Times_New_Roman',Times,'Liberation_Serif',serif] text-[9pt] leading-tight text-black [-webkit-print-color-adjust:exact] [page:epp] [print-color-adjust:exact]"
     >
-      <div className="border border-black">
+      <div style={{ height: `${SHEET_HEIGHT_MM}mm` }} className="flex flex-col border border-black [&>*]:shrink-0">
         <p className="flex h-[4.5mm] items-center justify-end px-1 text-[12pt] font-bold italic">
           Resolución 299/11, Anexo I
         </p>
         <h2 className="flex h-[5mm] items-center justify-center bg-black text-[11pt] font-bold text-white">
           ENTREGA DE ROPA DE TRABAJO Y ELEMENTOS DE PROTECCIÓN PERSONAL
         </h2>
-        <Row>
-          <Field reference={1} width="63%" label="Razón social:" value={company?.legalName} />
-          <Field reference={2} width="37%" label="C.U.I.T.:" value={company?.cuit} />
-        </Row>
-        <Row>
-          <Field reference={3} width="36%" label="Dirección:" value={place.addressLine} />
-          <Field reference={4} width="19.5%" label="Localidad:" value={place.city} />
-          <Field reference={5} width="8%" label="C.P.:" value={place.postalCode} />
-          <Field reference={6} width="36.5%" label="Provincia:" value={place.province} />
-        </Row>
-        <Row>
-          <Field reference={7} width="72.8%" label="Nombre y apellido del trabajador:" value={worker.name} />
-          <Field reference={8} width="27.2%" label="D.N.I.:" value={worker.dni} />
-        </Row>
-        <Row className="min-h-[22mm]">
-          <Box
-            reference={9}
-            width="48.6%"
-            label="Descripción breve del puesto/s de trabajo en el/los cuales se desempeña el trabajador:"
-          >
-            <span className="font-bold">{position.name}</span>
-            {position.description && <>. {position.description}</>}
+        {FIELD_ROWS.map((row) => (
+          <Row key={row[0]!.reference}>
+            {row.map((field) => (
+              <Field
+                key={field.reference}
+                reference={field.reference}
+                percent={field.percent}
+                label={field.label}
+                value={field.value(form)}
+                size={layout.fields[field.reference] ?? 9}
+              />
+            ))}
+          </Row>
+        ))}
+        <Row
+          className={`min-h-[22mm] overflow-hidden ${FONT_CLASS[layout.box]}`}
+          style={{ maxHeight: `${layout.boxMaxMm}mm` }}
+        >
+          <Box {...DESCRIPTION_BOX}>
+            <span className="font-bold">{form.position.name}</span>
+            {form.position.description && <>. {form.position.description}</>}
           </Box>
-          <Box
-            reference={10}
-            width="51.4%"
-            label="Elementos de protección personal, necesarios para el trabajador, según el puesto de trabajo:"
-          >
-            {position.requiredPpe}
-          </Box>
+          <Box {...PPE_BOX}>{form.position.requiredPpe}</Box>
         </Row>
         <div className="h-[1.5mm] border-b border-black bg-neutral-400" />
         <table className="w-full table-fixed border-collapse border-hidden">
@@ -99,7 +95,7 @@ export function PpeFormSheet({ form }: { form: PpeForm }) {
             ))}
           </tbody>
         </table>
-        <div className="relative h-[22mm] border-t border-black py-[0.5mm] pl-[6mm]">
+        <div className="relative min-h-[8mm] flex-1 shrink! border-t border-black py-[0.5mm] pl-[6mm]">
           <Reference value={18} />
           Información adicional:
         </div>
@@ -108,8 +104,20 @@ export function PpeFormSheet({ form }: { form: PpeForm }) {
   );
 }
 
-function Row({ children, className = "min-h-[6mm]" }: { children: ReactNode; className?: string }) {
-  return <div className={`flex border-b border-black ${className}`}>{children}</div>;
+function Row({
+  children,
+  className = "min-h-[6mm]",
+  style,
+}: {
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <div style={style} className={`flex border-b border-black ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 /** Número de referencia del instructivo, chico, en la esquina del casillero. */
@@ -119,19 +127,24 @@ function Reference({ value }: { value: number }) {
 
 function Field({
   reference,
-  width,
+  percent,
   label,
   value,
+  size,
 }: {
   reference: number;
-  width: string;
+  percent: number;
   label: string;
   value: string | undefined;
+  size: FontSize;
 }) {
   return (
-    <div style={{ width }} className="relative flex items-center border-r border-black pr-1 pl-[6mm] last:border-r-0">
+    <div
+      style={{ width: `${percent}%` }}
+      className="relative flex items-center border-r border-black pr-1 pl-[6mm] last:border-r-0"
+    >
       <Reference value={reference} />
-      <span className="break-words">
+      <span className={`min-w-0 break-words ${FONT_CLASS[size]}`}>
         {label} {value}
       </span>
     </div>
@@ -140,17 +153,20 @@ function Field({
 
 function Box({
   reference,
-  width,
+  percent,
   label,
   children,
 }: {
   reference: number;
-  width: string;
+  percent: number;
   label: string;
   children: ReactNode;
 }) {
   return (
-    <div style={{ width }} className="relative border-r border-black py-[0.5mm] pr-1 pl-[6mm] last:border-r-0">
+    <div
+      style={{ width: `${percent}%` }}
+      className="relative border-r border-black py-[0.5mm] pr-1 pl-[6mm] last:border-r-0"
+    >
       <Reference value={reference} />
       <p>{label}</p>
       <p className="mt-[1mm] break-words whitespace-pre-line">{children}</p>

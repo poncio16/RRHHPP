@@ -67,7 +67,7 @@ export const SETTING_DEFINITIONS = {
   },
   documents: {
     title: "Documentación",
-    description: "Archivos adjuntos y aviso de vencimientos.",
+    description: "Archivos adjuntos, aviso de vencimientos y documentos mensuales.",
     fields: [
       {
         name: "maxFileSizeMb",
@@ -81,10 +81,17 @@ export const SETTING_DEFINITIONS = {
         unit: "días",
         hint: "Entre 1 y 365. Cada tipo de documento puede tener su propia anticipación.",
       },
+      {
+        name: "monthlyGraceDays",
+        label: "Plazo para cargar los documentos mensuales",
+        unit: "días",
+        hint: "Días después de fin de mes (entre 0 y 60). Pasado ese plazo, el mes figura como faltante en los obligatorios de todos los meses, como los recibos de sueldo.",
+      },
     ] satisfies SettingFieldMeta[],
     schema: z.object({
       maxFileSizeMb: z.number().int().min(1).max(MAX_UPLOAD_MB).default(10),
       alertDaysBefore: z.number().int().min(1).max(365).default(30),
+      monthlyGraceDays: z.number().int().min(0).max(60).default(10),
     }),
   },
   leaves: {

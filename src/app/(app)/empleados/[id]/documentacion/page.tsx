@@ -45,8 +45,12 @@ async function Content({ params, searchParams }: Props) {
       <EmployeeHeader employee={employee} current="documentacion" access={page} />
       {missing.length > 0 && (
         <Alert variant="warning" className="mb-4">
-          Falta cargar {missing.length === 1 ? "un documento obligatorio" : "documentos obligatorios"}:{" "}
-          <span className="font-medium">{missing.join(", ")}</span>.
+          <p>Falta cargar documentación obligatoria:</p>
+          <ul className="mt-1 list-disc pl-5 font-medium">
+            {missing.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </Alert>
       )}
       <Card>

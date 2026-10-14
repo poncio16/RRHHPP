@@ -1,3 +1,4 @@
+import { parsePeriod, periodOf } from "@/lib/format";
 import { baseListQuerySchema } from "@/lib/list/query";
 import { z } from "@/lib/zod";
 import type { CatalogDefinition, CatalogField } from "./definitions";
@@ -21,7 +22,11 @@ function fieldSchema(field: CatalogField): z.ZodType {
         .string()
         .trim()
         .max(field.max ?? 200)
-        .transform((v) => (field.uppercase ? v.toUpperCase() : v));
+        .transform((v) => (field.uppercase ? v.toUpperCase() : v.replace(/\r\n?/g, "\n")));
+      if (field.maxLines) {
+        const maxLines = field.maxLines;
+        text = text.refine((v) => v.split("\n").length <= maxLines, `Usá hasta ${maxLines} renglones.`) as never;
+      }
       if (field.pattern) {
         const pattern = new RegExp(field.pattern);
         text = text.refine((v) => v === "" || pattern.test(v), field.patternMessage ?? "Formato inválido.") as never;
@@ -55,6 +60,16 @@ function fieldSchema(field: CatalogField): z.ZodType {
           .max(field.max, `No puede superar ${field.max}.`)
           .nullable(),
       );
+    case "month":
+      // Acepta "AAAA-MM" del formulario o la fecha ya normalizada por este mismo esquema.
+      return z.preprocess(
+        (v) =>
+          v === "" || v === undefined || v === null ? null : v instanceof Date ? v : (parsePeriod(String(v)) ?? v),
+        z
+          .date("Ingresá un mes válido (AAAA-MM).")
+          .nullable()
+          .transform((d) => (d ? periodOf(d) : null)),
+      );
     case "choice": {
       const values = z.enum(field.options.map((o) => o.value) as [string, ...string[]], "Elegí una opción.");
       if (field.optional) return z.preprocess((v) => (v === "" || v === undefined ? null : v), values.nullable());
@@ -79,7 +94,10 @@ export function catalogItemSchema(def: CatalogDefinition, mode: "create" | "upda
     if (mode === "update" && (field.type === "text" || field.type === "choice") && field.immutable) continue;
     shape[field.name] = fieldSchema(field);
   }
-  return z.object(shape);
+  return z.object(shape).superRefine((values, ctx) => {
+    const issue = def.validate?.(values);
+    if (issue) ctx.addIssue({ code: "custom", path: [issue.field], message: issue.message });
+  });
 }
 
 export const catalogListQuerySchema = baseListQuerySchema.extend({

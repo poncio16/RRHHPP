@@ -26,7 +26,13 @@ export function MissingDocumentsTable({ rows }: { rows: MissingDocumentsRow[] })
               <p className="text-muted-foreground text-xs">Legajo {row.employee.fileNumber}</p>
             </TableCell>
             <TableCell className="hidden align-top md:table-cell">{row.department}</TableCell>
-            <TableCell className="align-top">{row.missing.join(", ")}</TableCell>
+            <TableCell className="align-top">
+              <ul className="flex flex-col gap-0.5">
+                {row.missing.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>

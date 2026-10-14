@@ -87,6 +87,12 @@ enum SalaryConceptKind {
 }
 
 /// Hechos de otros módulos que generan novedades (cada uno, con un único tipo de novedad).
+/// Documentos que debe tener todo legajo activo.
+enum DocumentRequirement {
+  UNA_VEZ
+  MENSUAL
+}
+
 enum NoveltyOrigin {
   HORAS_EXTRAS
   LLEGADAS_TARDE
@@ -906,20 +912,22 @@ model AttendanceDay {
 // ============================================================
 
 model DocumentType {
-  id                  String   @id @default(uuid(7)) @db.Uuid
-  name                String   @unique
-  requiresExpiry      Boolean  @default(false) @map("requires_expiry")
-  defaultValidityDays Int?     @map("default_validity_days")
-  isSensitive         Boolean  @default(false) @map("is_sensitive")
-  /// Todo legajo activo debe tenerlo: el sistema avisa en cuáles falta.
-  isRequired          Boolean  @default(false) @map("is_required")
-  alertDaysBefore     Int?     @map("alert_days_before")
-  isActive            Boolean  @default(true) @map("is_active")
-  sortOrder           Int      @default(0) @map("sort_order")
-  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
-  createdById         String?  @map("created_by_id") @db.Uuid
-  updatedById         String?  @map("updated_by_id") @db.Uuid
+  id                  String               @id @default(uuid(7)) @db.Uuid
+  name                String               @unique
+  requiresExpiry      Boolean              @default(false) @map("requires_expiry")
+  defaultValidityDays Int?                 @map("default_validity_days")
+  isSensitive         Boolean              @default(false) @map("is_sensitive")
+  /// Obligatorio en todo legajo activo: una vez o uno por mes. Sin valor, no se controla.
+  requirement         DocumentRequirement?
+  /// Primer mes que se controla en los obligatorios de todos los meses (primer día del mes).
+  requiredFrom        DateTime?            @map("required_from") @db.Date
+  alertDaysBefore     Int?                 @map("alert_days_before")
+  isActive            Boolean              @default(true) @map("is_active")
+  sortOrder           Int                  @default(0) @map("sort_order")
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  createdById         String?              @map("created_by_id") @db.Uuid
+  updatedById         String?              @map("updated_by_id") @db.Uuid
 
   documents Document[]
 
@@ -953,6 +961,8 @@ model Document {
   fileId         String?        @map("file_id") @db.Uuid
   leaveRecordId  String?        @map("leave_record_id") @db.Uuid
   exitId         String?        @map("exit_id") @db.Uuid
+  /// Mes al que corresponde (primer día del mes), en los tipos obligatorios de todos los meses.
+  period         DateTime?      @db.Date
   notes          String?
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz

@@ -6,6 +6,7 @@
  * Este archivo se usa también en el cliente: no importar nada del servidor.
  */
 
+import { DOCUMENT_REQUIREMENT_LABELS } from "@/features/documents/constants";
 import { COUNTING_MODE_LABELS, LEAVE_CLASS_LABELS } from "@/features/leaves/constants";
 import { NOVELTY_ORIGIN_LABELS } from "@/features/novelties/constants";
 import { CONCEPT_NATURE_LABELS, SALARY_CONCEPT_KIND_LABELS } from "@/features/salaries/constants";
@@ -28,6 +29,8 @@ export type CatalogField =
       immutable?: boolean;
       /** Texto de varias líneas (se edita en un cuadro más alto). */
       multiline?: boolean;
+      /** Máximo de renglones de un texto de varias líneas. */
+      maxLines?: number;
       hint?: string;
       inList?: boolean;
     }
@@ -50,6 +53,8 @@ export type CatalogField =
       immutable?: boolean;
       /** Admite quedar vacío ("Ninguno"). */
       optional?: boolean;
+      /** Texto de la opción vacía, si no es "Ninguno". */
+      emptyLabel?: string;
       hint?: string;
       inList?: boolean;
     }
@@ -68,6 +73,14 @@ export type CatalogField =
       /** Número de orden opcional (entero de 1 a `max`). */
       type: "position";
       max: number;
+      hint?: string;
+      inList?: boolean;
+    }
+  | {
+      name: string;
+      label: string;
+      /** Mes opcional ("AAAA-MM"), guardado como el primer día del mes. */
+      type: "month";
       hint?: string;
       inList?: boolean;
     }
@@ -94,6 +107,8 @@ export type CatalogDefinition = {
   /** Grupo de LookupValue, si el catálogo es una lista simple. */
   lookupGroup?: string;
   fields: CatalogField[];
+  /** Reglas entre campos: devuelve el campo con problema y el mensaje. */
+  validate?: (values: Record<string, unknown>) => { field: string; message: string } | null;
 };
 
 export const CATALOG_SECTIONS = {
@@ -211,16 +226,18 @@ export const CATALOGS: Record<CatalogKey, CatalogDefinition> = {
         name: "jobDescription",
         label: "Descripción del puesto",
         type: "text",
-        max: 500,
+        max: 300,
         multiline: true,
+        maxLines: 5,
         hint: "Opcional. Tareas del puesto en pocas palabras; se imprime en el formulario de entrega de EPP.",
       },
       {
         name: "requiredPpe",
         label: "Elementos de protección personal necesarios",
         type: "text",
-        max: 500,
+        max: 300,
         multiline: true,
+        maxLines: 5,
         hint: "Opcional. Los que indica el servicio de higiene y seguridad para este puesto; se imprimen en el formulario de entrega de EPP.",
       },
     ],
@@ -400,13 +417,32 @@ export const CATALOGS: Record<CatalogKey, CatalogDefinition> = {
         inList: true,
       },
       {
-        name: "isRequired",
+        name: "requirement",
         label: "Obligatorio en todo legajo",
-        type: "boolean",
-        hint: "El sistema avisa en qué legajos activos falta. No lo marques en los que solo existen en algunos casos, como los apercibimientos.",
+        type: "choice",
+        optional: true,
+        emptyLabel: "No",
+        options: Object.entries(DOCUMENT_REQUIREMENT_LABELS).map(([value, label]) => ({ value, label })),
+        hint: "El sistema avisa en qué legajos activos falta. «Una vez»: alcanza con uno cargado, como el DNI. «Todos los meses»: uno por mes, como los recibos de sueldo. No lo marques en los que solo existen en algunos casos, como los apercibimientos.",
+        inList: true,
+      },
+      {
+        name: "requiredFrom",
+        label: "Controlar desde (mes)",
+        type: "month",
+        hint: "Solo para los obligatorios de todos los meses: el primer mes que se reclama. Los anteriores no se controlan.",
         inList: true,
       },
     ],
+    validate: (values) => {
+      if (values.requirement === "MENSUAL" && !values.requiredFrom) {
+        return { field: "requiredFrom", message: "Indicá desde qué mes se controla." };
+      }
+      if (values.requirement !== "MENSUAL" && values.requiredFrom) {
+        return { field: "requiredFrom", message: "Dejalo vacío: solo se usa en los obligatorios de todos los meses." };
+      }
+      return null;
+    },
   },
   "tipos-licencia": {
     key: "tipos-licencia",
