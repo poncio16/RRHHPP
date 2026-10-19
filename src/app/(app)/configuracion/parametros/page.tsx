@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { AccessDenied } from "@/components/feedback/access-denied";
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
 import { PageHeader } from "@/components/layout/page-header";
+import { ScrollToHash } from "@/components/layout/scroll-to-hash";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfigTabs } from "@/features/configuration/config-tabs";
 import { SettingForm } from "@/features/settings/components/setting-form";
@@ -33,7 +34,8 @@ async function SettingsContent() {
       <ConfigTabs current="/configuracion/parametros" permissions={access.ctx.permissions} />
       <div className="flex flex-col gap-4">
         {settings.map((setting) => (
-          <Card key={setting.key}>
+          // El id permite enlazar a un grupo (por ejemplo, #backups desde el inicio).
+          <Card key={setting.key} id={setting.key} className="scroll-mt-20">
             <CardHeader>
               <CardTitle>{setting.title}</CardTitle>
               <CardDescription>{setting.description}</CardDescription>
@@ -47,6 +49,7 @@ async function SettingsContent() {
           Los parámetros de alertas y reportes se agregan acá junto con cada módulo.
         </p>
       </div>
+      <ScrollToHash />
     </>
   );
 }

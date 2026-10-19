@@ -216,3 +216,15 @@ test("las pantallas principales no se desbordan en el celular", async ({ page })
     expect(await noHorizontalScroll(page), path).toBe(true);
   }
 });
+
+test("el inicio muestra los backups y lleva a sus parámetros", async ({ page }) => {
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: "Backups", exact: true })).toBeVisible();
+  // En la instalación de producción de CI ya corrieron backups y pruebas de restauración que fallan a propósito.
+  if (process.env.E2E_BACKUPS_FALLIDOS) {
+    await expect(page.getByText("Revisá los backups")).toBeVisible();
+    await expect(page.getByText(/La última prueba de restauración falló/)).toBeVisible();
+  }
+  await page.getByRole("link", { name: "Parámetros → Backups" }).click();
+  await expect(page.locator("#backups")).toBeInViewport();
+});

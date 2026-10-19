@@ -14,7 +14,14 @@ import { DistributionCard } from "@/features/dashboard/components/distribution-c
 import { EventList } from "@/features/dashboard/components/event-list";
 import { StatTile } from "@/features/dashboard/components/stat-tile";
 import { getDashboard, type PendingTask } from "@/features/dashboard/service";
-import { getSetupChecklist, getSystemStatus, type SetupChecklist } from "@/features/system/service";
+import { BackupAlert, BackupCard } from "@/features/system/components/backup-status";
+import {
+  getBackupStatus,
+  getSetupChecklist,
+  getSystemStatus,
+  type BackupStatus,
+  type SetupChecklist,
+} from "@/features/system/service";
 import {
   formatDate,
   formatDecimal,
@@ -62,17 +69,23 @@ const people = (n: number) => (n === 1 ? "1 persona" : `${formatInteger(n)} pers
 async function Content({ searchParams }: Pick<Props, "searchParams">) {
   const { ctx } = await requirePageAccess();
   const query = flattenSearchParams(await searchParams);
-  const [data, setup] = await Promise.all([getDashboard(ctx, query), getSetupChecklist(ctx)]);
+  const showConfig = hasPermission(ctx, "config:manage");
+  const now = new Date();
+  const [data, setup, backups] = await Promise.all([
+    getDashboard(ctx, query),
+    getSetupChecklist(ctx),
+    showConfig ? getBackupStatus(ctx, now) : null,
+  ]);
   const { staff, movements, absence, leaves, alerts, tasks } = data;
   const today = todayInTimeZone();
   const link = (period: Date | null) => (period ? `/dashboard?periodo=${periodKey(period)}` : null);
   const pendingAlerts = alerts ? Object.values(alerts.counts).reduce((a, b) => a + (b ?? 0), 0) : 0;
   const alertsOf = (kind: keyof typeof ALERT_KIND_LABELS) => alerts?.items.filter((a) => a.kind === kind) ?? [];
-  const showConfig = hasPermission(ctx, "config:manage");
 
   if (!staff && !leaves && !absence) {
     return (
       <div className="space-y-6">
+        {backups && <BackupAlert status={backups} />}
         <Card>
           <EmptyState
             title="No hay indicadores para mostrar"
@@ -81,13 +94,14 @@ async function Content({ searchParams }: Pick<Props, "searchParams">) {
         </Card>
         <SetupSection setup={setup} />
         <TasksSection tasks={tasks} />
-        {showConfig && <SystemStatusSection />}
+        {backups && <InstallationSection backups={backups} now={now} />}
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
+      {backups && <BackupAlert status={backups} />}
       <SetupSection setup={setup} />
       <TasksSection tasks={tasks} />
 
@@ -316,7 +330,7 @@ async function Content({ searchParams }: Pick<Props, "searchParams">) {
         </section>
       )}
 
-      {showConfig && <SystemStatusSection />}
+      {backups && <InstallationSection backups={backups} now={now} />}
     </div>
   );
 }
@@ -400,10 +414,20 @@ function TasksSection({ tasks }: { tasks: PendingTask[] }) {
   );
 }
 
+/** Para quien administra los parámetros: estado de la instalación y de los backups. */
+function InstallationSection({ backups, now }: { backups: BackupStatus; now: Date }) {
+  return (
+    <div className="grid gap-3 lg:grid-cols-2">
+      <SystemStatusSection />
+      <BackupCard status={backups} now={now} />
+    </div>
+  );
+}
+
 async function SystemStatusSection() {
   const status = await getSystemStatus();
   return (
-    <Card className="max-w-xl">
+    <Card>
       <CardHeader>
         <CardTitle>Estado de la instalación</CardTitle>
         <CardDescription>Información leída en este momento de la base de datos.</CardDescription>

@@ -213,6 +213,34 @@ export const SETTING_DEFINITIONS = {
       nextYearHolidaysDays: z.number().int().min(0).max(120).default(30),
     }),
   },
+  backups: {
+    title: "Backups",
+    description:
+      "Cuándo avisa el inicio, a quien administra los parámetros, que los backups o las pruebas de restauración fallaron o están atrasados. Los hacen los scripts del servidor (docs/operacion.md, secciones 6 y 8).",
+    fields: [
+      {
+        name: "maxHoursWithoutBackup",
+        label: "Sin un backup correcto durante más de",
+        unit: "horas",
+        hint: "Entre 0 y 720. El backup diario corre una vez por día: 26 horas dejan margen para que termine. 0 desactiva el aviso, también el de backup fallido.",
+      },
+      {
+        name: "maxDaysWithoutRestoreTest",
+        label: "Sin una prueba de restauración correcta durante más de",
+        unit: "días",
+        hint: "Entre 0 y 365. Conviene hacerla al menos una vez por mes. 0 desactiva el aviso, también el de prueba fallida.",
+      },
+    ] satisfies SettingFieldMeta[],
+    schema: z.object({
+      maxHoursWithoutBackup: z
+        .number()
+        .int()
+        .min(0)
+        .max(24 * 30)
+        .default(26),
+      maxDaysWithoutRestoreTest: z.number().int().min(0).max(365).default(35),
+    }),
+  },
   seniority: {
     title: "Rangos de antigüedad",
     description:

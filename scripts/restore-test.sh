@@ -14,43 +14,85 @@
 #   - que cada archivo registrado en la base esté en el backup con su SHA-256.
 # Muestra además las filas por tabla del backup y de la base actual.
 # Ver docs/operacion.md.
+#
+# Al terminar, bien o mal (también si se interrumpe), registra el resultado en
+# la base de la aplicación (tabla backup_run) para el aviso del inicio.
 set -euo pipefail
 umask 077
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/lib.sh
 source scripts/lib.sh
 
+case "${1:-}" in
+  -h | --help) echo "Uso: scripts/restore-test.sh [carpeta-del-backup]. Ver docs/operacion.md, sección 8."; exit 0 ;;
+  -*) echo "Uso: scripts/restore-test.sh [carpeta-del-backup]" >&2; exit 2 ;;
+esac
+
+TEST_DB=rrhh_prueba_restauracion
+SRC=""
+TMP=""
+# Lo que se está haciendo, para el motivo de un error (vacío al salir por los problemas ya informados).
+STEP="al buscar el backup"
+INTERRUPTED=""
+DONE=""
+FAILURES=0
+PROBLEMS=""
+finish() {
+  local status=$?
+  # Que un error acá (por ejemplo, la terminal ya cerrada) no impida el registro.
+  set +e
+  trap '' HUP INT TERM
+  if [ -n "$TMP" ]; then
+    docker compose exec -T db dropdb -U postgres --force --if-exists "$TEST_DB" >/dev/null 2>&1 || true
+    rm -rf "$TMP"
+  fi
+  if [ "$status" -ne 0 ] && [ -z "$DONE" ]; then
+    local detail=""
+    if [ "$FAILURES" -gt 0 ]; then detail="$(plural "$FAILURES" problema problemas): $PROBLEMS."; fi
+    if [ -n "$STEP" ]; then
+      local reason="error $STEP"
+      if [ -n "$INTERRUPTED" ]; then reason="se interrumpió $STEP"; fi
+      echo "Prueba de restauración FALLIDA: $reason." >&2
+      detail="${detail:+$detail }${reason^}."
+    fi
+    record_run PRUEBA_RESTAURACION false "${SRC:+$(basename -- "$SRC")}" "$detail"
+  fi
+}
+trap finish EXIT
+trap 'INTERRUPTED=1; exit 129' HUP
+trap 'INTERRUPTED=1; exit 130' INT
+trap 'INTERRUPTED=1; exit 143' TERM
+
+# Un problema que no corta la prueba: se informa al final, con los demás.
+fail() {
+  echo "ERROR: $1" >&2
+  FAILURES=$((FAILURES + 1))
+  PROBLEMS="${PROBLEMS:+$PROBLEMS; }${1%.}"
+}
+
 DEST="$(backup_dir)"
 SRC="${1:-$(find "$DEST" -mindepth 1 -maxdepth 1 -type d -name 'rrhh-*' 2>/dev/null | sort | tail -n 1)}"
 if [ -z "$SRC" ] || [ ! -f "$SRC/base.dump" ] || [ ! -f "$SRC/archivos.tar.gz" ] || [ ! -f "$SRC/SHA256SUMS" ]; then
   echo "No encontré un backup para probar. Uso: scripts/restore-test.sh [carpeta-del-backup]." >&2
+  STEP="al buscar el backup: no hay uno completo en ${SRC:-$DEST}"
   exit 1
 fi
-
-TEST_DB=rrhh_prueba_restauracion
+STEP="al crear la carpeta temporal"
 TMP="$(mktemp -d)"
-cleanup() {
-  docker compose exec -T db dropdb -U postgres --force --if-exists "$TEST_DB" >/dev/null 2>&1 || true
-  rm -rf "$TMP"
-}
-trap cleanup EXIT
-
-FAILURES=0
-fail() {
-  echo "ERROR: $1" >&2
-  FAILURES=$((FAILURES + 1))
-}
 
 echo "Backup: $SRC"
+STEP="al verificar las sumas SHA-256"
 echo "Verificando las sumas SHA-256..."
 (cd "$SRC" && sha256sum --quiet -c SHA256SUMS)
 
+STEP="al restaurar en la base temporal"
 echo "Restaurando en la base temporal $TEST_DB..."
 docker compose exec -T -e PGOPTIONS='-c client_min_messages=warning' db sh -c \
   "dropdb -U postgres --force --if-exists $TEST_DB && createdb -U postgres -O \"\$APP_DB_USER\" $TEST_DB"
 docker compose exec -T db sh -c \
   "pg_restore -U postgres -d $TEST_DB --no-owner --role=\"\$APP_DB_USER\" --exit-on-error" <"$SRC/base.dump"
 
+STEP="al verificar las migraciones"
 echo "Verificando migraciones..."
 APPLIED="$(psql_at "$TEST_DB" 'SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL')"
 SHIPPED="$(compose_run migrate sh -c 'find prisma/migrations -mindepth 1 -maxdepth 1 -type d | wc -l')"
@@ -62,6 +104,7 @@ else
   fail "el backup tiene $APPLIED migraciones y esta versión solo $SHIPPED: es de una versión más nueva de la aplicación."
 fi
 
+STEP="al verificar la protección de la auditoría"
 echo "Verificando la protección de la auditoría..."
 TRIGGERS="$(psql_at "$TEST_DB" "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'audit_log'::regclass AND NOT tgisinternal")"
 if [ "$TRIGGERS" -ge 2 ]; then
@@ -70,6 +113,7 @@ else
   fail "faltan los triggers que impiden modificar audit_log (hay $TRIGGERS)."
 fi
 
+STEP="al verificar los archivos adjuntos"
 echo "Verificando los archivos adjuntos..."
 mkdir "$TMP/archivos"
 tar -C "$TMP/archivos" -xzf "$SRC/archivos.tar.gz"
@@ -80,9 +124,10 @@ if [ "$EXPECTED" -eq 0 ]; then
 elif (cd "$TMP/archivos" && sha256sum --quiet -c "$TMP/esperados"); then
   echo "  Los archivos registrados en la base ($EXPECTED) están en el backup, sin cambios."
 else
-  fail "hay archivos registrados en la base que faltan en el backup o no coinciden (ver arriba)."
+  fail "hay archivos registrados en la base que faltan en el backup o no coinciden."
 fi
 
+STEP="al contar las filas por tabla"
 echo "Filas por tabla (backup / base actual):"
 TABLES="$(psql_at "$TEST_DB" "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")"
 LIVE_DB="$(docker compose exec -T db sh -c 'echo "$APP_DB_NAME"')"
@@ -95,7 +140,11 @@ for table in $TABLES; do
 done
 
 if [ "$FAILURES" -gt 0 ]; then
-  echo "Prueba de restauración FALLIDA ($FAILURES problemas) para $(basename "$SRC")." >&2
+  STEP=""
+  echo "Prueba de restauración FALLIDA ($(plural "$FAILURES" problema problemas)) para $(basename -- "$SRC")." >&2
   exit 1
 fi
-echo "Prueba de restauración correcta para $(basename "$SRC") ($(date -u +%Y-%m-%dT%H:%MZ)): $(plural "$TOTAL" fila filas), $(plural "$EXPECTED" archivo archivos)."
+SUMMARY="$(plural "$TOTAL" fila filas), $(plural "$EXPECTED" archivo archivos)"
+DONE=1
+record_run PRUEBA_RESTAURACION true "$(basename -- "$SRC")" "$SUMMARY."
+echo "Prueba de restauración correcta para $(basename -- "$SRC") ($(date -u +%Y-%m-%dT%H:%MZ)): $SUMMARY."
