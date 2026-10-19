@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,10 +40,9 @@ export function BackupCard({ status, now }: { status: BackupStatus; now: Date })
         </dl>
         <p className="text-muted-foreground text-xs">
           Cuándo avisar se cambia en{" "}
-          {/* Carga completa: con navegación del cliente, el grupo todavía no está en la página al buscar el ancla. */}
-          <a href="/configuracion/parametros#backups" className="text-foreground underline underline-offset-4">
+          <Link href="/configuracion/parametros#backups" className="text-foreground underline underline-offset-4">
             Parámetros → Backups
-          </a>
+          </Link>
           .
         </p>
       </CardContent>

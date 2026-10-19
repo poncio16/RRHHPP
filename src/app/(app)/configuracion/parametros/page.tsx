@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { AccessDenied } from "@/components/feedback/access-denied";
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
 import { PageHeader } from "@/components/layout/page-header";
+import { ScrollToHash } from "@/components/layout/scroll-to-hash";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfigTabs } from "@/features/configuration/config-tabs";
 import { SettingForm } from "@/features/settings/components/setting-form";
@@ -48,6 +49,7 @@ async function SettingsContent() {
           Los parámetros de alertas y reportes se agregan acá junto con cada módulo.
         </p>
       </div>
+      <ScrollToHash />
     </>
   );
 }
