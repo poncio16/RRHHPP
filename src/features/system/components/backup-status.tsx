@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,69 +34,64 @@ export function BackupCard({ status, now }: { status: BackupStatus; now: Date })
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
         <dl className="space-y-4">
-          <BackupRow
-            title="Último backup"
-            check={status.backup}
-            now={now}
-            none="Todavía no se registró ninguno."
-            lastOk="Último correcto"
-          />
-          <BackupRow
-            title="Última prueba de restauración"
-            check={status.restoreTest}
-            now={now}
-            none="Todavía no se registró ninguna."
-            lastOk="Última correcta"
-          />
+          <BackupRow check={status.backup} now={now} texts={BACKUP_TEXTS} />
+          <BackupRow check={status.restoreTest} now={now} texts={RESTORE_TEST_TEXTS} />
         </dl>
         <p className="text-muted-foreground text-xs">
           Cuándo avisar se cambia en{" "}
-          <Link href="/configuracion/parametros" className="text-foreground underline underline-offset-4">
-            Parámetros
-          </Link>{" "}
-          → Backups.
+          {/* Carga completa: con navegación del cliente, el grupo todavía no está en la página al buscar el ancla. */}
+          <a href="/configuracion/parametros#backups" className="text-foreground underline underline-offset-4">
+            Parámetros → Backups
+          </a>
+          .
         </p>
       </CardContent>
     </Card>
   );
 }
 
-function stateBadge(check: BackupCheck): { label: string; variant: "success" | "destructive" | "muted" } {
+type RowTexts = { title: string; none: string; lastOk: string; ok: string; stale: string };
+
+const BACKUP_TEXTS: RowTexts = {
+  title: "Último backup",
+  none: "Todavía no se registró ninguno.",
+  lastOk: "Último correcto",
+  ok: "Correcto",
+  stale: "Atrasado",
+};
+
+const RESTORE_TEST_TEXTS: RowTexts = {
+  title: "Última prueba de restauración",
+  none: "Todavía no se registró ninguna.",
+  lastOk: "Última correcta",
+  ok: "Correcta",
+  stale: "Atrasada",
+};
+
+function stateBadge(check: BackupCheck, texts: RowTexts) {
   switch (check.state) {
     case "ok":
-      return { label: "Correcto", variant: "success" };
+      return { label: texts.ok, variant: "success" } as const;
     case "failed":
-      return { label: "Falló", variant: "destructive" };
+      return { label: "Falló", variant: "destructive" } as const;
     case "stale":
-      return { label: "Atrasado", variant: "destructive" };
+      return { label: texts.stale, variant: "destructive" } as const;
     case "none":
-      return { label: "Sin registros", variant: check.alert ? "destructive" : "muted" };
+      return { label: "Sin registros", variant: check.alert ? "destructive" : "muted" } as const;
   }
 }
 
-function BackupRow({
-  title,
-  check,
-  now,
-  none,
-  lastOk,
-}: {
-  title: string;
-  check: BackupCheck;
-  now: Date;
-  none: string;
-  lastOk: string;
-}) {
-  const { last } = check;
-  const badge = stateBadge(check);
+function BackupRow({ check, now, texts }: { check: BackupCheck; now: Date; texts: RowTexts }) {
+  const { last, lastOk } = check;
+  const badge = stateBadge(check, texts);
   return (
-    <div className="space-y-1">
-      <dt className="flex items-center justify-between gap-3">
-        <span className="text-muted-foreground">{title}</span>
+    <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1">
+      <dt className="text-muted-foreground">{texts.title}</dt>
+      <dd>
         <Badge variant={badge.variant}>{badge.label}</Badge>
-      </dt>
+      </dd>
       {last ? (
-        <dd className="space-y-0.5">
+        <dd className="col-span-2 space-y-0.5">
           <p>
             {formatDateTime(last.finishedAt)}{" "}
             <span className="text-muted-foreground">({elapsed(last.finishedAt, now)})</span>
@@ -107,14 +101,15 @@ function BackupRow({
               {[last.name, last.detail].filter(Boolean).join(" · ")}
             </p>
           )}
-          {!last.ok && check.lastOk && (
+          {!last.ok && lastOk && (
             <p className="text-muted-foreground text-xs">
-              {lastOk}: {formatDateTime(check.lastOk.finishedAt)} ({elapsed(check.lastOk.finishedAt, now)}).
+              {texts.lastOk}: {formatDateTime(lastOk.finishedAt)} ({elapsed(lastOk.finishedAt, now)}).
             </p>
           )}
         </dd>
       ) : (
-        <dd className="text-muted-foreground">{none}</dd>
+        // Sin registros: en rojo, el texto del aviso dice desde cuándo faltan.
+        <dd className="text-muted-foreground col-span-2">{check.alert ?? texts.none}</dd>
       )}
     </div>
   );

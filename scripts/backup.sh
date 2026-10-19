@@ -14,8 +14,8 @@
 # que su registro, así que todo lo que figura en el dump queda en el tar.
 # Ver docs/operacion.md.
 #
-# Al terminar, bien o mal, lo registra en la base (tabla backup_run) para el
-# aviso del inicio de la aplicación.
+# Al terminar, bien o mal (también si se interrumpe), registra el resultado en
+# la base (tabla backup_run) para el aviso del inicio de la aplicación.
 set -euo pipefail
 umask 077
 cd "$(dirname "$0")/.."
@@ -23,22 +23,34 @@ cd "$(dirname "$0")/.."
 # shellcheck source=scripts/lib.sh
 source scripts/lib.sh
 
+case "${1:-}" in
+  -h | --help) echo "Uso: scripts/backup.sh [carpeta-destino]. Ver docs/operacion.md, sección 6."; exit 0 ;;
+  -*) echo "Uso: scripts/backup.sh [carpeta-destino]" >&2; exit 2 ;;
+esac
+
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 NAME="rrhh-$STAMP"
 WORK=""
 STEP="al preparar el backup"
+INTERRUPTED=""
+DONE=""
 finish() {
   local status=$?
   if [ -n "$WORK" ]; then rm -rf "$WORK"; fi
-  if [ "$status" -ne 0 ]; then
-    echo "Backup FALLIDO: error $STEP." >&2
+  if [ "$status" -ne 0 ] && [ -z "$DONE" ]; then
+    local reason="error $STEP"
+    if [ -n "$INTERRUPTED" ]; then reason="se interrumpió $STEP"; fi
+    echo "Backup FALLIDO: $reason." >&2
     # La carpeta, solo si el backup llegó a guardarse.
     local saved=""
     if [ -n "${DEST:-}" ] && [ -d "$DEST/$NAME" ]; then saved="$NAME"; fi
-    record_run BACKUP false "$saved" "Error $STEP."
+    record_run BACKUP false "$saved" "${reason^}."
   fi
 }
 trap finish EXIT
+trap 'INTERRUPTED=1; exit 129' HUP
+trap 'INTERRUPTED=1; exit 130' INT
+trap 'INTERRUPTED=1; exit 143' TERM
 
 DEST="${1:-$(backup_dir)}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-$(env_value BACKUP_RETENTION_DAYS)}"
@@ -67,11 +79,19 @@ STEP="al guardar el backup en $DEST"
 mv "$WORK" "$DEST/$NAME"
 WORK=""
 
-STEP="al borrar los backups de más de $RETENTION_DAYS días (el backup nuevo quedó guardado)"
-find "$DEST" -mindepth 1 -maxdepth 1 -type d -name 'rrhh-*' -mtime +"$RETENTION_DAYS" -exec rm -rf {} +
-# Restos de un backup interrumpido.
-find "$DEST" -mindepth 1 -maxdepth 1 -type d -name '.en-curso-*' -mtime +1 -exec rm -rf {} +
+STEP="al medir el backup"
+SIZE="$(human_size "$DEST/$NAME")"
 
-SIZE="$(du -sh "$DEST/$NAME" | cut -f1)"
-record_run BACKUP true "$NAME" "$SIZE"
+# Si no se pueden borrar los backups viejos, el nuevo vale igual: se avisa en
+# el log y en el registro, sin darlo por fallido.
+NOTE=""
+if ! find "$DEST" -mindepth 1 -maxdepth 1 -type d -name 'rrhh-*' -mtime +"$RETENTION_DAYS" -exec rm -rf {} + ||
+  # Restos de un backup interrumpido.
+  ! find "$DEST" -mindepth 1 -maxdepth 1 -type d -name '.en-curso-*' -mtime +1 -exec rm -rf {} +; then
+  NOTE=" No se pudieron borrar los backups de más de $RETENTION_DAYS días: revisá los permisos de $DEST."
+  echo "AVISO:$NOTE" >&2
+fi
+
+record_run BACKUP true "$NAME" "Tamaño: $SIZE.$NOTE"
+DONE=1
 echo "Backup completo: $DEST/$NAME ($SIZE)"

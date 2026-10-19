@@ -24,9 +24,24 @@ compose_run() {
   docker compose --progress quiet run --rm --no-deps -T "$@"
 }
 
-# "1 archivo" / "3 archivos".
+# 15230 → "15.230".
+thousands() {
+  echo "$1" | awk '{ n = $1; s = ""; while (n >= 1000) { s = sprintf(".%03d%s", n % 1000, s); n = int(n / 1000) } print n s }'
+}
+
+# "1 archivo" / "3 archivos" / "15.230 filas".
 plural() {
-  if [ "$1" -eq 1 ]; then echo "$1 $2"; else echo "$1 $3"; fi
+  if [ "$1" -eq 1 ]; then echo "1 $2"; else echo "$(thousands "$1") $3"; fi
+}
+
+# Tamaño de una carpeta para leer: "136 KB", "48,3 MB", "1,2 GB".
+human_size() {
+  LC_ALL=C du -sk "$1" | awk '{
+    kb = $1
+    if (kb < 1024) printf "%d KB", kb
+    else if (kb < 1048576) printf "%.1f MB", kb / 1024
+    else printf "%.1f GB", kb / 1048576
+  }' | tr . ,
 }
 
 # Registra en la base de la aplicación el resultado de un backup o de una

@@ -33,7 +33,8 @@ async function SettingsContent() {
       <ConfigTabs current="/configuracion/parametros" permissions={access.ctx.permissions} />
       <div className="flex flex-col gap-4">
         {settings.map((setting) => (
-          <Card key={setting.key}>
+          // El id permite enlazar a un grupo (por ejemplo, #backups desde el inicio).
+          <Card key={setting.key} id={setting.key} className="scroll-mt-20">
             <CardHeader>
               <CardTitle>{setting.title}</CardTitle>
               <CardDescription>{setting.description}</CardDescription>

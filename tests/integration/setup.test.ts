@@ -235,6 +235,20 @@ describe("inicio: backups", () => {
       expect(changed.restoreTest.alert).toMatch(
         /^La última prueba de restauración correcta es del .* \(hace 5 días\)\.$/,
       );
+
+      // El último correcto es el más reciente de los correctos, aunque se haya registrado antes otro más viejo.
+      await db.backupRun.create({
+        data: { kind: "BACKUP", ok: true, name: "rrhh-viejo", finishedAt: hoursAfter(now, -40) },
+      });
+      await db.backupRun.create({
+        data: { kind: "BACKUP", ok: false, detail: "Otro error.", finishedAt: hoursAfter(now, -0.5) },
+      });
+      expect((await getBackupStatus(admin, now)).backup).toMatchObject({
+        state: "failed",
+        alert: null,
+        last: { detail: "Otro error." },
+        lastOk: { name: "rrhh-nuevo" },
+      });
     } finally {
       await db.backupRun.deleteMany();
       if (previous) await db.setting.update({ where: { key: "backups" }, data: { value: previous.value ?? {} } });

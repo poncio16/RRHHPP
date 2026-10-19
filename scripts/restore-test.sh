@@ -15,18 +15,26 @@
 # Muestra además las filas por tabla del backup y de la base actual.
 # Ver docs/operacion.md.
 #
-# Al terminar, bien o mal, lo registra en la base de la aplicación (tabla
-# backup_run) para el aviso del inicio.
+# Al terminar, bien o mal (también si se interrumpe), registra el resultado en
+# la base de la aplicación (tabla backup_run) para el aviso del inicio.
 set -euo pipefail
 umask 077
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/lib.sh
 source scripts/lib.sh
 
+case "${1:-}" in
+  -h | --help) echo "Uso: scripts/restore-test.sh [carpeta-del-backup]. Ver docs/operacion.md, sección 8."; exit 0 ;;
+  -*) echo "Uso: scripts/restore-test.sh [carpeta-del-backup]" >&2; exit 2 ;;
+esac
+
 TEST_DB=rrhh_prueba_restauracion
 SRC=""
 TMP=""
+# Lo que se está haciendo, para el motivo de un error; vacío al terminar las verificaciones.
 STEP="al buscar el backup"
+INTERRUPTED=""
+DONE=""
 FAILURES=0
 PROBLEMS=""
 finish() {
@@ -35,17 +43,22 @@ finish() {
     docker compose exec -T db dropdb -U postgres --force --if-exists "$TEST_DB" >/dev/null 2>&1 || true
     rm -rf "$TMP"
   fi
-  if [ "$status" -ne 0 ]; then
-    local detail="Error $STEP."
-    if [ "$FAILURES" -gt 0 ]; then
-      detail="$(plural "$FAILURES" problema problemas): $PROBLEMS."
-    else
-      echo "Prueba de restauración FALLIDA: error $STEP." >&2
+  if [ "$status" -ne 0 ] && [ -z "$DONE" ]; then
+    local detail=""
+    if [ "$FAILURES" -gt 0 ]; then detail="$(plural "$FAILURES" problema problemas): $PROBLEMS."; fi
+    if [ -n "$STEP" ]; then
+      local reason="error $STEP"
+      if [ -n "$INTERRUPTED" ]; then reason="se interrumpió $STEP"; fi
+      echo "Prueba de restauración FALLIDA: $reason." >&2
+      detail="${detail:+$detail }${reason^}."
     fi
-    record_run PRUEBA_RESTAURACION false "${SRC:+$(basename "$SRC")}" "$detail"
+    record_run PRUEBA_RESTAURACION false "${SRC:+$(basename -- "$SRC")}" "$detail"
   fi
 }
 trap finish EXIT
+trap 'INTERRUPTED=1; exit 129' HUP
+trap 'INTERRUPTED=1; exit 130' INT
+trap 'INTERRUPTED=1; exit 143' TERM
 
 # Un problema que no corta la prueba: se informa al final, con los demás.
 fail() {
@@ -61,6 +74,7 @@ if [ -z "$SRC" ] || [ ! -f "$SRC/base.dump" ] || [ ! -f "$SRC/archivos.tar.gz" ]
   STEP="al buscar el backup: no hay uno completo en ${SRC:-$DEST}"
   exit 1
 fi
+STEP="al crear la carpeta temporal"
 TMP="$(mktemp -d)"
 
 echo "Backup: $SRC"
@@ -122,10 +136,12 @@ for table in $TABLES; do
   printf '  %-34s %8s / %s\n' "$table" "$restored" "$live"
 done
 
+STEP=""
 if [ "$FAILURES" -gt 0 ]; then
-  echo "Prueba de restauración FALLIDA ($(plural "$FAILURES" problema problemas)) para $(basename "$SRC")." >&2
+  echo "Prueba de restauración FALLIDA ($(plural "$FAILURES" problema problemas)) para $(basename -- "$SRC")." >&2
   exit 1
 fi
 SUMMARY="$(plural "$TOTAL" fila filas), $(plural "$EXPECTED" archivo archivos)"
-record_run PRUEBA_RESTAURACION true "$(basename "$SRC")" "$SUMMARY."
-echo "Prueba de restauración correcta para $(basename "$SRC") ($(date -u +%Y-%m-%dT%H:%MZ)): $SUMMARY."
+record_run PRUEBA_RESTAURACION true "$(basename -- "$SRC")" "$SUMMARY."
+DONE=1
+echo "Prueba de restauración correcta para $(basename -- "$SRC") ($(date -u +%Y-%m-%dT%H:%MZ)): $SUMMARY."
