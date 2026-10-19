@@ -236,7 +236,7 @@ describe("inicio: backups", () => {
         /^La última prueba de restauración correcta es del .* \(hace 5 días\)\.$/,
       );
 
-      // El último correcto es el más reciente de los correctos, aunque se haya registrado antes otro más viejo.
+      // El último correcto es el más reciente de los correctos, aunque después se registre otro más viejo.
       await db.backupRun.create({
         data: { kind: "BACKUP", ok: true, name: "rrhh-viejo", finishedAt: hoursAfter(now, -40) },
       });

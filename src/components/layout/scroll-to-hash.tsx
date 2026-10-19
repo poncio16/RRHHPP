@@ -9,7 +9,8 @@ import { useEffect } from "react";
  */
 export function ScrollToHash() {
   useEffect(() => {
-    const id = decodeURIComponent(window.location.hash.slice(1));
+    // Sin decodificar: los ids que se enlazan son ASCII y un ancla mal formada no tiene que romper la página.
+    const id = window.location.hash.slice(1);
     if (id) document.getElementById(id)?.scrollIntoView();
   }, []);
   return null;

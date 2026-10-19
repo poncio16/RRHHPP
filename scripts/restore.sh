@@ -63,4 +63,4 @@ docker compose up -d --wait app
 
 echo "Restauración completa desde $(basename "$SRC")."
 # La base restaurada trae los registros de backups hasta antes de ese backup.
-echo "Hacé ahora un backup y una prueba de restauración (scripts/backup.sh y scripts/restore-test.sh): hasta entonces, el inicio puede mostrarlos como atrasados o fallidos."
+echo "Hacé ahora un backup y una prueba de restauración (scripts/backup.sh y scripts/restore-test.sh): hasta entonces, el Inicio puede mostrarlos como atrasados o fallidos."

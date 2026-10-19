@@ -1153,7 +1153,7 @@ model BackupRun {
   ok         Boolean
   /// Carpeta del backup (rrhh-AAAAMMDDTHHMMSSZ): la que se creó o la que se probó.
   name       String?
-  /// Tamaño del backup, resumen de la prueba o motivo del error.
+  /// Tamaño del backup (con un aviso si no se pudieron borrar los viejos), resumen de la prueba, o problemas y motivo del error.
   detail     String?
   finishedAt DateTime      @default(now()) @map("finished_at") @db.Timestamptz
 

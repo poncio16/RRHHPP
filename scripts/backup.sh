@@ -36,15 +36,21 @@ INTERRUPTED=""
 DONE=""
 finish() {
   local status=$?
+  # Que un error acá (por ejemplo, la terminal ya cerrada) no impida el registro.
+  set +e
+  trap '' HUP INT TERM
   if [ -n "$WORK" ]; then rm -rf "$WORK"; fi
   if [ "$status" -ne 0 ] && [ -z "$DONE" ]; then
     local reason="error $STEP"
     if [ -n "$INTERRUPTED" ]; then reason="se interrumpió $STEP"; fi
-    echo "Backup FALLIDO: $reason." >&2
-    # La carpeta, solo si el backup llegó a guardarse.
-    local saved=""
-    if [ -n "${DEST:-}" ] && [ -d "$DEST/$NAME" ]; then saved="$NAME"; fi
-    record_run BACKUP false "$saved" "${reason^}."
+    if [ -n "${DEST:-}" ] && [ -d "$DEST/$NAME" ]; then
+      # La carpeta existe recién después del `mv`: el backup quedó completo.
+      echo "AVISO: $reason; el backup $DEST/$NAME quedó completo." >&2
+      record_run BACKUP true "$NAME" "${reason^} (el backup quedó completo)."
+    else
+      echo "Backup FALLIDO: $reason." >&2
+      record_run BACKUP false "" "${reason^}."
+    fi
   fi
 }
 trap finish EXIT
@@ -79,19 +85,25 @@ STEP="al guardar el backup en $DEST"
 mv "$WORK" "$DEST/$NAME"
 WORK=""
 
-STEP="al medir el backup"
-SIZE="$(human_size "$DEST/$NAME")"
-
-# Si no se pueden borrar los backups viejos, el nuevo vale igual: se avisa en
-# el log y en el registro, sin darlo por fallido.
+# Desde acá el backup está completo: si falla borrar los viejos, se avisa en el
+# log y en el registro, sin darlo por fallido.
+STEP="al borrar los backups viejos"
 NOTE=""
-if ! find "$DEST" -mindepth 1 -maxdepth 1 -type d -name 'rrhh-*' -mtime +"$RETENTION_DAYS" -exec rm -rf {} + ||
-  # Restos de un backup interrumpido.
-  ! find "$DEST" -mindepth 1 -maxdepth 1 -type d -name '.en-curso-*' -mtime +1 -exec rm -rf {} +; then
-  NOTE=" No se pudieron borrar los backups de más de $RETENTION_DAYS días: revisá los permisos de $DEST."
-  echo "AVISO:$NOTE" >&2
+if ! find "$DEST" -mindepth 1 -maxdepth 1 -type d -name 'rrhh-*' -mtime +"$RETENTION_DAYS" -exec rm -rf {} +; then
+  NOTE="no se pudieron borrar los backups de más de $RETENTION_DAYS días"
+fi
+# Restos de un backup interrumpido.
+if ! find "$DEST" -mindepth 1 -maxdepth 1 -type d -name '.en-curso-*' -mtime +1 -exec rm -rf {} +; then
+  if [ -n "$NOTE" ]; then NOTE="$NOTE ni"; else NOTE="no se pudieron borrar"; fi
+  NOTE="$NOTE los restos de backups interrumpidos"
+fi
+if [ -n "$NOTE" ]; then
+  NOTE="$NOTE: revisá los permisos de $DEST"
+  echo "AVISO: $NOTE." >&2
 fi
 
-record_run BACKUP true "$NAME" "Tamaño: $SIZE.$NOTE"
+STEP="al medir el backup"
+SIZE="$(human_size "$DEST/$NAME")"
 DONE=1
+record_run BACKUP true "$NAME" "Tamaño: $SIZE.${NOTE:+ ${NOTE^}.}"
 echo "Backup completo: $DEST/$NAME ($SIZE)"

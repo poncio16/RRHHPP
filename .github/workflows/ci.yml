@@ -168,16 +168,17 @@ jobs:
           EOF
           docker compose exec -T db sh -c \
             'psql -U postgres -d "$APP_DB_NAME" -v ON_ERROR_STOP=1 -At -c "SELECT kind, ok, name, detail FROM backup_run ORDER BY finished_at"' \
-            | sed -E -e 's/rrhh-[0-9]{8}T[0-9]{6}Z/rrhh-*/' -e 's/Tamaño: [0-9,]+ [KMG]B/Tamaño: */' -e 's/^(PRUEBA_RESTAURACION\|t\|[^|]*\|)[0-9.]+ filas/\1* filas/' \
+            | sed -E -e 's/rrhh-[0-9]{8}T[0-9]{6}Z/rrhh-*/' -e 's/Tamaño: [0-9,]+ [KMG]B/Tamaño: */' -e 's/^(PRUEBA_RESTAURACION\|t\|[^|]*\|)[0-9]{1,3}(\.[0-9]{3})* filas/\1* filas/' \
             | tee registros.txt
           diff esperados.txt registros.txt
 
-      # Después de los backups, para que el inicio muestre el aviso de la prueba que falló.
-      - name: Ingreso, cambio de contraseña y cabeceras contra el contenedor
-        run: npx playwright test --grep "sin sesión|no se desbordan"
+      # Después de los backups, para que el inicio muestre el aviso de los que fallaron.
+      - name: Ingreso, cambio de contraseña, cabeceras y aviso de backups contra el contenedor
+        run: npx playwright test --grep "sin sesión|no se desbordan|backups"
         env:
           E2E_BASE_URL: http://localhost:3000
           E2E_NEW_PASSWORD: clave-e2e-ci-2026
+          E2E_BACKUPS_FALLIDOS: "1"
 
       - name: Logs de los contenedores
         if: failure()

@@ -31,7 +31,7 @@ esac
 TEST_DB=rrhh_prueba_restauracion
 SRC=""
 TMP=""
-# Lo que se está haciendo, para el motivo de un error; vacío al terminar las verificaciones.
+# Lo que se está haciendo, para el motivo de un error (vacío al salir por los problemas ya informados).
 STEP="al buscar el backup"
 INTERRUPTED=""
 DONE=""
@@ -39,6 +39,9 @@ FAILURES=0
 PROBLEMS=""
 finish() {
   local status=$?
+  # Que un error acá (por ejemplo, la terminal ya cerrada) no impida el registro.
+  set +e
+  trap '' HUP INT TERM
   if [ -n "$TMP" ]; then
     docker compose exec -T db dropdb -U postgres --force --if-exists "$TEST_DB" >/dev/null 2>&1 || true
     rm -rf "$TMP"
@@ -136,12 +139,12 @@ for table in $TABLES; do
   printf '  %-34s %8s / %s\n' "$table" "$restored" "$live"
 done
 
-STEP=""
 if [ "$FAILURES" -gt 0 ]; then
+  STEP=""
   echo "Prueba de restauración FALLIDA ($(plural "$FAILURES" problema problemas)) para $(basename -- "$SRC")." >&2
   exit 1
 fi
 SUMMARY="$(plural "$TOTAL" fila filas), $(plural "$EXPECTED" archivo archivos)"
-record_run PRUEBA_RESTAURACION true "$(basename -- "$SRC")" "$SUMMARY."
 DONE=1
+record_run PRUEBA_RESTAURACION true "$(basename -- "$SRC")" "$SUMMARY."
 echo "Prueba de restauración correcta para $(basename -- "$SRC") ($(date -u +%Y-%m-%dT%H:%MZ)): $SUMMARY."
