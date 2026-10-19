@@ -1,10 +1,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { saveSetting } from "@/features/settings/service";
-import { getSetupChecklist, setupAccess } from "@/features/system/service";
+import { backupTrackingSince } from "@/features/system/repository";
+import { getBackupStatus, getSetupChecklist, setupAccess } from "@/features/system/service";
 import type { Permission } from "@/server/authz";
 import { ADMIN_ROLE } from "@/server/authz/roles";
 import type { ActorContext } from "@/server/context";
 import { db } from "@/server/db";
+import { ForbiddenError } from "@/server/errors/app-error";
 import { defaultSetting } from "@/server/settings";
 import { actorFor, createTestUser } from "./helpers";
 
@@ -162,6 +164,81 @@ describe("inicio: puesta en marcha", () => {
     } finally {
       if (previous) await db.setting.update({ where: { key: "alerts" }, data: { value: previous.value ?? {} } });
       else await db.setting.delete({ where: { key: "alerts" } });
+    }
+  });
+});
+
+describe("inicio: backups", () => {
+  const HOUR = 3_600_000;
+  const hoursAfter = (date: Date, hours: number) => new Date(date.getTime() + hours * HOUR);
+
+  it("solo lo consulta quien administra los parámetros", async () => {
+    await expect(getBackupStatus(rrhh)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(getBackupStatus(consulta)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(getBackupStatus(configOnly)).resolves.toMatchObject({ backup: { state: "none" } });
+  });
+
+  it("sin registros avisa recién cuando pasa el máximo desde que se aplicó la migración", async () => {
+    const since = await backupTrackingSince();
+    expect(since).toBeInstanceOf(Date);
+    const early = await getBackupStatus(admin, hoursAfter(since!, 25));
+    expect(early.backup).toMatchObject({ state: "none", alert: null });
+    const late = await getBackupStatus(admin, hoursAfter(since!, 27));
+    expect(late.backup.alert).toMatch(/^No se registró ningún backup desde el /);
+    // La prueba de restauración tiene su propio máximo, en días.
+    expect(late.restoreTest).toMatchObject({ state: "none", alert: null });
+    expect((await getBackupStatus(admin, hoursAfter(since!, 36 * 24))).restoreTest.alert).toMatch(
+      /^No se registró ninguna prueba de restauración desde el /,
+    );
+  });
+
+  it("toma el último registro de cada tipo, el último correcto y los máximos de Parámetros", async () => {
+    const now = new Date();
+    const previous = await db.setting.findUnique({ where: { key: "backups" } });
+    await db.backupRun.createMany({
+      data: [
+        { kind: "BACKUP", ok: true, name: "rrhh-anterior", detail: "10M", finishedAt: hoursAfter(now, -30) },
+        { kind: "BACKUP", ok: false, detail: "Error al copiar la base de datos.", finishedAt: hoursAfter(now, -2) },
+        {
+          kind: "PRUEBA_RESTAURACION",
+          ok: true,
+          name: "rrhh-anterior",
+          detail: "100 filas, 2 archivos.",
+          finishedAt: hoursAfter(now, -72),
+        },
+      ],
+    });
+    try {
+      const status = await getBackupStatus(admin, now);
+      expect(status.backup).toMatchObject({
+        state: "failed",
+        last: { ok: false, name: null, detail: "Error al copiar la base de datos." },
+        lastOk: { ok: true, name: "rrhh-anterior", detail: "10M" },
+      });
+      expect(status.backup.alert).toContain("Error al copiar la base de datos. El último correcto es del ");
+      expect(status.restoreTest).toMatchObject({ state: "ok", alert: null });
+
+      // Un backup correcto posterior deja de avisar.
+      await db.backupRun.create({
+        data: { kind: "BACKUP", ok: true, name: "rrhh-nuevo", finishedAt: hoursAfter(now, -1) },
+      });
+      expect((await getBackupStatus(admin, now)).backup).toMatchObject({
+        state: "ok",
+        alert: null,
+        last: { name: "rrhh-nuevo" },
+      });
+
+      await saveSetting(admin, "backups", { maxHoursWithoutBackup: 0, maxDaysWithoutRestoreTest: 2 });
+      const changed = await getBackupStatus(admin, hoursAfter(now, 48));
+      expect(changed.backup).toMatchObject({ state: "ok", alert: null });
+      expect(changed.restoreTest.state).toBe("stale");
+      expect(changed.restoreTest.alert).toMatch(
+        /^La última prueba de restauración correcta es del .* \(hace 5 días\)\.$/,
+      );
+    } finally {
+      await db.backupRun.deleteMany();
+      if (previous) await db.setting.update({ where: { key: "backups" }, data: { value: previous.value ?? {} } });
+      else await db.setting.deleteMany({ where: { key: "backups" } });
     }
   });
 });

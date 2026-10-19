@@ -161,6 +161,12 @@ enum ImportStatus {
   DESCARTADO
 }
 
+/// Qué registró un script de operación: scripts/backup.sh o scripts/restore-test.sh.
+enum BackupRunKind {
+  BACKUP
+  PRUEBA_RESTAURACION
+}
+
 // ============================================================
 // Seguridad
 // ============================================================
@@ -1132,4 +1138,25 @@ model AlertDismissal {
   dismissedBy User @relation(fields: [dismissedById], references: [id], onDelete: Restrict)
 
   @@map("alert_dismissal")
+}
+
+// ============================================================
+// Operación
+// ============================================================
+
+/// Resultado de cada backup y de cada prueba de restauración, para el aviso
+/// del inicio. Lo insertan los scripts del servidor (`record_run` en
+/// scripts/lib.sh) con el usuario postgres; la aplicación solo lo lee.
+model BackupRun {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  kind       BackupRunKind
+  ok         Boolean
+  /// Carpeta del backup (rrhh-AAAAMMDDTHHMMSSZ): la que se creó o la que se probó.
+  name       String?
+  /// Tamaño del backup, resumen de la prueba o motivo del error.
+  detail     String?
+  finishedAt DateTime      @default(now()) @map("finished_at") @db.Timestamptz
+
+  @@index([kind, finishedAt])
+  @@map("backup_run")
 }

@@ -156,6 +156,15 @@ jobs:
         run: |
           scripts/backup.sh
           scripts/restore-test.sh
+          # Una prueba que falla termina con error y también queda registrada.
+          if scripts/restore-test.sh /no-existe; then exit 1; fi
+
+      - name: Cada backup y cada prueba quedan registrados para el inicio
+        run: |
+          docker compose exec -T db sh -c \
+            'psql -U postgres -d "$APP_DB_NAME" -v ON_ERROR_STOP=1 -At -c "SELECT kind, ok FROM backup_run ORDER BY finished_at"' \
+            | tee registros.txt
+          diff <(printf 'BACKUP|t\nPRUEBA_RESTAURACION|t\nPRUEBA_RESTAURACION|f\n') registros.txt
 
       - name: Logs de los contenedores
         if: failure()

@@ -138,7 +138,7 @@ Seguí la sección 4. Sin HTTPS no se puede iniciar sesión: la cookie de sesió
 
 1. Entrá a `https://<dominio>/login` con el administrador inicial. El sistema obliga a cambiar la contraseña temporal.
 2. **Configuración → Empresa**: razón social, CUIT y domicilio.
-3. **Configuración → Parámetros**: revisá seguridad (inactividad, duración de la sesión, intentos y bloqueo, largo de contraseña), documentación, licencias, vacaciones, asistencia, alertas y rangos de antigüedad.
+3. **Configuración → Parámetros**: revisá seguridad (inactividad, duración de la sesión, intentos y bloqueo, largo de contraseña), documentación, licencias, vacaciones, asistencia, alertas, backups y rangos de antigüedad.
 4. **Configuración → Feriados**: cargá los del año según el calendario oficial (no vienen precargados porque cambian cada año).
 5. **Configuración → Catálogos y Horarios**: sectores, puestos, establecimientos, convenios y categorías, obras sociales, ART y horarios de la empresa. En los puestos, la descripción y los elementos de protección personal que indica higiene y seguridad, y en los establecimientos, el domicilio completo con código postal: salen en el formulario de entrega de EPP.
 6. Revisá con el asesor laboral los **tipos de licencia**, las **reglas de vacaciones**, los tipos de novedad y qué **tipos de documento** son obligatorios en todo legajo (en los mensuales, como el recibo de sueldo, desde qué mes se controlan): los valores del seed son de referencia y hay que validarlos. Con el contador, elegí qué tipos de novedad son columnas de la planilla de novedades y en qué orden ("Columna en la planilla del contador"). Verificá los **bancos** con el listado del BCRA.
@@ -226,6 +226,8 @@ scripts/backup.sh /mnt/backups  # o en otra carpeta
 
 Crea `backups/rrhh-AAAAMMDDTHHMMSSZ/` (hora UTC) con permisos solo para el dueño, verifica que el dump se pueda leer y que el tar no esté dañado, y borra los backups locales más viejos que `BACKUP_RETENTION_DAYS`. Si algo falla, termina con error y no deja un backup a medias.
 
+Al terminar, bien o mal, registra el resultado en la base de la aplicación (tabla `backup_run`: carpeta, tamaño o motivo del error), y el **Inicio** se lo muestra a quien administra los parámetros (sección 10).
+
 ### 6.3. Backup diario con cron
 
 `/etc/cron.d/rrhh-backup` (reemplazá `rrhh` por el usuario que maneja Docker en el servidor):
@@ -270,6 +272,8 @@ scripts/restore.sh backups/rrhh-20261012T063000Z
 
 Lo cargado después del backup se pierde. Antes de restaurar en serio, probá ese mismo backup con `scripts/restore-test.sh`.
 
+Después de restaurar, hacé un backup (sección 6.2): la base restaurada trae los registros de backups solo hasta el anterior al que se restauró, así que el Inicio puede mostrar el backup como atrasado hasta que se haga uno nuevo.
+
 **En un servidor nuevo**: hacé la instalación de la sección 3 hasta el paso 3.3 (sin el seed base), copiá la carpeta del backup a `backups/` y ejecutá `scripts/restore.sh`. Los nombres y contraseñas del `.env` pueden ser otros: todo queda a nombre del usuario de la aplicación del servidor nuevo.
 
 Un backup de una versión **más nueva** que el código instalado no se tiene que restaurar sobre esa versión: actualizá primero el código (la prueba de restauración lo avisa).
@@ -289,7 +293,7 @@ Restaura el backup en una base temporal del mismo servidor (`rrhh_prueba_restaur
 - que la bitácora de auditoría siga protegida contra cambios;
 - que cada archivo registrado en la base esté en el backup con su SHA-256.
 
-Muestra además las filas por tabla del backup y de la base actual, y termina con una línea como `Prueba de restauración correcta para rrhh-20261012T063000Z (2026-10-12T07:30Z): 15230 filas, 412 archivos.` Si algo no coincide, termina con error y lo explica. Al final borra la base temporal.
+Muestra además las filas por tabla del backup y de la base actual, y termina con una línea como `Prueba de restauración correcta para rrhh-20261012T063000Z (2026-10-12T07:30Z): 15230 filas, 412 archivos.` Si algo no coincide, termina con error y lo explica. Al final borra la base temporal y, como el backup, registra el resultado en la base de la aplicación para el Inicio.
 
 Hacela al menos una vez por mes y después de cada actualización (el ejemplo de cron la corre todos los domingos), y guardá el resultado. Una vez por año conviene además una restauración completa en otro servidor, siguiendo la sección 7.
 
@@ -317,7 +321,7 @@ docker compose logs --no-log-prefix app | grep '^{' | jq -c 'select(.level >= 50
 - **Estado**: `GET /api/health` responde `200 {"status":"ok","database":"ok"}` si la aplicación llega a la base y `503` si no. No pide sesión: se puede vigilar desde afuera con cualquier servicio de monitoreo, contra `https://<dominio>/api/health`. Un 200 no garantiza que se haya cargado el seed base.
 - **Contenedores**: `docker compose ps` muestra `healthy` o `unhealthy`. Con `restart: unless-stopped`, `db` y `app` vuelven solos después de un reinicio del servidor o de Docker.
 - **Disco**: `df -h` y `docker system df`. Crecen la base, los adjuntos, los backups locales y la caché de construcción de imágenes (`docker builder prune` la libera). Sin espacio, PostgreSQL se detiene.
-- **Backups**: revisá `/var/log/rrhh/backup.log`. Para alertar si no hay un backup del último día: `find /opt/rrhh/backups -maxdepth 1 -name 'rrhh-*' -mtime -1 | grep -q . || echo "Sin backup reciente"`.
+- **Backups**: en el **Inicio**, quien tiene el permiso "Administrar empresa y parámetros generales" ve el último backup y la última prueba de restauración, y un aviso en rojo arriba de todo si el último falló o si el último correcto es más viejo que el máximo de Configuración → Parámetros → Backups (26 horas y 35 días por defecto; 0 desactiva el aviso). Sin ningún registro, avisa cuando pasa ese máximo desde la instalación o desde la actualización a la versión que los registra. Los scripts registran el resultado al terminar; si no pueden (por ejemplo, con la base detenida), lo dicen en el log y el Inicio lo muestra como atrasado. El detalle de cada ejecución está en `/var/log/rrhh/backup.log`. Para alertar desde afuera si no hay un backup del último día: `find /opt/rrhh/backups -maxdepth 1 -name 'rrhh-*' -mtime -1 | grep -q . || echo "Sin backup reciente"`.
 - **Certificado**: `sudo certbot certificates` muestra el vencimiento; la renovación es automática.
 - **Ingresos fallidos**: en **Auditoría**, filtrando por resultado "Fallido".
 

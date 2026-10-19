@@ -1,11 +1,12 @@
 import "server-only";
 import { canImport } from "@/features/imports/service";
 import { todayInTimeZone } from "@/lib/format";
-import { hasPermission } from "@/server/authz";
+import { assertPermission, hasPermission } from "@/server/authz";
 import { ADMIN_ROLE } from "@/server/authz/roles";
 import type { ActorContext } from "@/server/context";
 import { logger } from "@/server/logger";
 import { getSetting } from "@/server/settings";
+import { backupCheck } from "./backups";
 import * as repo from "./repository";
 import { nextYearHolidaysDue, setupSteps, setupTitle } from "./setup";
 
@@ -87,3 +88,27 @@ export async function getSetupChecklist(ctx: ActorContext, today: Date = todayIn
   return { title, steps, review };
 }
 export type SetupChecklist = Awaited<ReturnType<typeof getSetupChecklist>>;
+
+/**
+ * Último backup y última prueba de restauración que registraron los scripts
+ * del servidor, con el aviso que corresponde según Parámetros → Backups. Lo ve
+ * quien administra los parámetros, que es quien puede cambiar esos máximos.
+ */
+export async function getBackupStatus(ctx: ActorContext, now: Date = new Date()) {
+  await assertPermission(ctx, "config:manage", "configuracion");
+  const [settings, since, backup, restoreTest] = await Promise.all([
+    getSetting("backups"),
+    repo.backupTrackingSince(),
+    repo.latestBackupRuns("BACKUP"),
+    repo.latestBackupRuns("PRUEBA_RESTAURACION"),
+  ]);
+  return {
+    backup: backupCheck("backup", backup, { now, since, maxHours: settings.maxHoursWithoutBackup }),
+    restoreTest: backupCheck("restoreTest", restoreTest, {
+      now,
+      since,
+      maxHours: settings.maxDaysWithoutRestoreTest * 24,
+    }),
+  };
+}
+export type BackupStatus = Awaited<ReturnType<typeof getBackupStatus>>;

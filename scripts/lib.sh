@@ -28,3 +28,19 @@ compose_run() {
 plural() {
   if [ "$1" -eq 1 ]; then echo "$1 $2"; else echo "$1 $3"; fi
 }
+
+# Registra en la base de la aplicación el resultado de un backup o de una
+# prueba de restauración, para el aviso del inicio (tabla backup_run).
+#   record_run BACKUP|PRUEBA_RESTAURACION true|false <carpeta> <detalle>
+# Si no puede (por ejemplo, con la base detenida), lo avisa y sigue: sin
+# registros nuevos, el inicio muestra el backup como atrasado.
+record_run() {
+  if ! docker compose exec -T -e RUN_KIND="$1" -e RUN_OK="$2" -e RUN_NAME="$3" -e RUN_DETAIL="$4" db sh -c \
+    'psql -U postgres -d "$APP_DB_NAME" -v ON_ERROR_STOP=1 -q -v kind="$RUN_KIND" -v ok="$RUN_OK" -v name="$RUN_NAME" -v detail="$RUN_DETAIL"' \
+    >/dev/null <<'SQL'; then
+INSERT INTO backup_run (id, kind, ok, name, detail)
+VALUES (gen_random_uuid(), :'kind', :'ok', NULLIF(:'name', ''), NULLIF(:'detail', ''));
+SQL
+    echo "AVISO: no se pudo registrar el resultado en la base; el inicio de la aplicación no lo va a mostrar." >&2
+  fi
+}

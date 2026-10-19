@@ -109,16 +109,16 @@ docker compose up -d --wait                           # PostgreSQL, migraciones 
 docker compose run --rm -e SEED_ADMIN_EMAIL -e SEED_ADMIN_PASSWORD migrate npm run db:seed:base
 ```
 
-| Archivo                   | Para qué                                                                                                          |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `Dockerfile`              | Imagen de la aplicación (servidor autónomo de Next.js, sin código fuente) y de herramientas (migraciones y seed). |
-| `docker-compose.prod.yml` | Producción: base sin puertos expuestos, migraciones al iniciar, aplicación solo en `127.0.0.1`.                   |
-| `docker-compose.yml`      | **Solo desarrollo** (usuario y contraseña conocidos, puerto 5432 abierto).                                        |
-| `.env.production.example` | Variables de producción, con `COMPOSE_FILE` para que `docker compose` use siempre el archivo de producción.       |
-| `deploy/nginx/rrhh.conf`  | Proxy inverso con HTTPS, límite de 21 MB para adjuntos y límite de intentos de ingreso por IP.                    |
-| `scripts/backup.sh`       | Backup de la base (`pg_dump`) y de los adjuntos, con sumas SHA-256 y retención.                                   |
-| `scripts/restore.sh`      | Restaura un backup (reemplaza la base y cierra todas las sesiones).                                               |
-| `scripts/restore-test.sh` | Prueba un backup en una base temporal, sin tocar la de la aplicación.                                             |
+| Archivo                   | Para qué                                                                                                              |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `Dockerfile`              | Imagen de la aplicación (servidor autónomo de Next.js, sin código fuente) y de herramientas (migraciones y seed).     |
+| `docker-compose.prod.yml` | Producción: base sin puertos expuestos, migraciones al iniciar, aplicación solo en `127.0.0.1`.                       |
+| `docker-compose.yml`      | **Solo desarrollo** (usuario y contraseña conocidos, puerto 5432 abierto).                                            |
+| `.env.production.example` | Variables de producción, con `COMPOSE_FILE` para que `docker compose` use siempre el archivo de producción.           |
+| `deploy/nginx/rrhh.conf`  | Proxy inverso con HTTPS, límite de 21 MB para adjuntos y límite de intentos de ingreso por IP.                        |
+| `scripts/backup.sh`       | Backup de la base (`pg_dump`) y de los adjuntos, con sumas SHA-256 y retención. Registra el resultado para el Inicio. |
+| `scripts/restore.sh`      | Restaura un backup (reemplaza la base y cierra todas las sesiones).                                                   |
+| `scripts/restore-test.sh` | Prueba un backup en una base temporal, sin tocar la de la aplicación. Registra el resultado para el Inicio.           |
 
 En producción el seed carga **solo datos base** (provincias, listas, roles, parámetros, tipos de documento, de licencia y de novedad, reglas de vacaciones, conceptos, bancos, tipos de contrato y de jornada) y el administrador inicial; nunca la empresa ni las personas de demostración. Si se pierde el acceso de todos los administradores, `npm run admin:recuperar` lo restablece desde la consola del servidor ([operacion.md](docs/operacion.md#12-recuperar-el-acceso-de-administrador)).
 
@@ -297,6 +297,7 @@ El **Inicio** muestra indicadores calculados en el momento con los datos cargado
 - **Ausentismo** = días de trabajo perdidos ÷ días de trabajo previstos. Pierden días las ausencias cargadas en asistencia y las licencias aprobadas de tipos marcados "Cuenta para el ausentismo" (Configuración → Catálogos → Tipos de licencia); un mismo día cuenta una vez. Los días previstos son los hábiles de cada persona según su horario (o los días por defecto de Parámetros → Licencias), sin feriados y dentro de su período de empleo. En el mes en curso se mide hasta hoy.
 - **Distribución** del personal activo por sector, puesto, tipo de contratación y modalidad de trabajo, en barras con cantidad y porcentaje.
 - **En curso y próximos**: licencias en curso, próximas vacaciones, documentos por vencer y cumpleaños (estas tres según la anticipación de las alertas), y las alertas pendientes por tipo.
+- **Backups** (solo con "Administrar empresa y parámetros generales"): al final, junto al estado de la instalación, la fecha y el resultado del último backup y de la última prueba de restauración, que registran los scripts del servidor al terminar. Si el último falló, o si el último correcto tiene más de 26 horas (backup) o de 35 días (prueba de restauración), aparece además un aviso en rojo arriba de todo. Los máximos se cambian en Parámetros → Backups; 0 desactiva el aviso. Si todavía no hay ningún registro, avisa cuando pasa el máximo desde la instalación o desde la actualización a la versión que los registra.
 
 ## Alertas
 
