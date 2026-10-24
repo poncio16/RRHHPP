@@ -1,0 +1,86 @@
+name: Backup en la nube
+
+# Instalación en Vercel y Neon: backup diario de la base y de los adjuntos a un
+# almacén privado de Vercel Blob, y prueba de restauración los domingos. Cada
+# resultado queda registrado para el aviso del Inicio. Ver docs/vercel.md.
+#
+# Necesita los secretos DIRECT_URL, APP_BLOB_TOKEN y BACKUP_BLOB_TOKEN. Sin
+# ellos (por ejemplo, en una instalación con Docker, donde los backups los hace
+# el cron del servidor) termina sin hacer nada.
+#
+# El repositorio es público y este log también: los scripts no muestran datos.
+
+on:
+  schedule:
+    # 3:30 y 4:30 de Argentina (UTC-3). GitHub puede demorarlos un rato.
+    - cron: "30 6 * * *"
+    - cron: "30 7 * * 0"
+  workflow_dispatch:
+    inputs:
+      tarea:
+        description: Qué hacer
+        type: choice
+        options:
+          - backup
+          - prueba de restauración
+        default: backup
+      backup:
+        description: "Para la prueba: el backup (rrhh-AAAAMMDDTHHMMSSZ). Vacío: el último."
+        required: false
+
+concurrency:
+  group: backup-nube
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      APP_BLOB_TOKEN: ${{ secrets.APP_BLOB_TOKEN }}
+      BACKUP_BLOB_TOKEN: ${{ secrets.BACKUP_BLOB_TOKEN }}
+      BACKUP_RETENTION_DAYS: ${{ vars.BACKUP_RETENTION_DAYS }}
+      TAREA: ${{ github.event_name == 'workflow_dispatch' && inputs.tarea || (github.event.schedule == '30 7 * * 0' && 'prueba de restauración' || 'backup') }}
+
+    steps:
+      - name: Configuración
+        id: config
+        run: |
+          missing=""
+          for name in DIRECT_URL APP_BLOB_TOKEN BACKUP_BLOB_TOKEN; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice::El backup en la nube no está configurado (faltan los secretos:$missing). Ver docs/vercel.md."
+            echo "listo=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "listo=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.listo == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.config.outputs.listo == 'true'
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias
+        if: steps.config.outputs.listo == 'true'
+        run: npm ci
+
+      - name: Backup
+        if: steps.config.outputs.listo == 'true' && env.TAREA == 'backup'
+        run: npx tsx scripts/nube/backup.ts
+
+      - name: Prueba de restauración
+        if: steps.config.outputs.listo == 'true' && env.TAREA == 'prueba de restauración'
+        run: npx tsx scripts/nube/restore-test.ts "$BACKUP"
+        env:
+          BACKUP: ${{ inputs.backup }}

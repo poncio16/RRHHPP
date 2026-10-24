@@ -8,6 +8,8 @@ export default defineConfig({
     seed: "tsx prisma/seed/index.ts",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Las migraciones van por la conexión directa: en Neon, DATABASE_URL pasa por
+    // el pooler, que no sirve para migrar. Con Docker no hace falta definirla.
+    url: process.env["DIRECT_URL"] || process.env["DATABASE_URL"],
   },
 });

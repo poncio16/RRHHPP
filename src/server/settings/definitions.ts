@@ -216,7 +216,7 @@ export const SETTING_DEFINITIONS = {
   backups: {
     title: "Backups",
     description:
-      "Cuándo avisa el inicio, a quien administra los parámetros, que los backups o las pruebas de restauración fallaron o están atrasados. Los hacen los scripts del servidor (docs/operacion.md, secciones 6 y 8).",
+      "Cuándo avisa el inicio, a quien administra los parámetros, que los backups o las pruebas de restauración fallaron o están atrasados. Los hacen los scripts del servidor (docs/operacion.md, secciones 6 y 8) o, en Vercel, GitHub Actions (docs/vercel.md).",
     fields: [
       {
         name: "maxHoursWithoutBackup",

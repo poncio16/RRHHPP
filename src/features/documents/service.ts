@@ -7,7 +7,8 @@ import { assertPermission, hasPermission } from "@/server/authz";
 import type { ActorContext } from "@/server/context";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { getSetting } from "@/server/settings";
-import { newStorageKey, storage, withStoredFile } from "@/server/storage";
+import { discardQuietly, storage, withStoredFile } from "@/server/storage";
+import { claimUpload, createUpload } from "../uploads/service";
 import { expiryState } from "./expiry";
 import { detectFileType, FILE_TYPES_LABEL, safeFileName } from "./files";
 import * as repo from "./repository";
@@ -170,26 +171,44 @@ export async function getUploadLimits() {
  * Escritura
  * ------------------------------------------------------------------------- */
 
-type PreparedFile = { key: string; bytes: Uint8Array; name: string; mime: string; sha256: string };
+/** Archivo que el navegador ya subió (ver `prepareDocumentUpload`) y su nombre original. */
+export type FileUpload = { uploadId: string; fileName: string };
 
-/** Valida tamaño y tipo real del archivo. No escribe nada. */
-async function prepareFile(file: File | null): Promise<PreparedFile | null> {
-  if (!file || file.size === 0) return null;
+type PreparedFile = {
+  key: string;
+  bytes: Uint8Array;
+  uploaded: true;
+  name: string;
+  mime: string;
+  sha256: string;
+};
+
+/**
+ * Prepara la subida directa del adjunto de un documento: el navegador lo sube
+ * al almacenamiento y después manda el formulario con el id de la subida.
+ */
+export async function prepareDocumentUpload(ctx: ActorContext) {
+  await assertPermission(ctx, "document:write", MODULE);
   const { maxFileSizeMb } = await getSetting("documents");
-  if (file.size > maxFileSizeMb * 1024 * 1024) {
-    throw new ValidationError(undefined, { file: [`El archivo supera el máximo de ${maxFileSizeMb} MB.`] });
-  }
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  return createUpload(ctx, maxFileSizeMb * 1024 * 1024);
+}
+
+/** Toma el archivo subido y valida su tipo real. Si no sirve, lo descarta. */
+async function prepareFile(ctx: ActorContext, upload: FileUpload | null): Promise<PreparedFile | null> {
+  if (!upload) return null;
+  const { key, bytes } = await claimUpload(ctx, upload.uploadId);
   const type = detectFileType(bytes);
   if (!type) {
+    await discardQuietly(key);
     throw new ValidationError(undefined, {
       file: [`El archivo no es un ${FILE_TYPES_LABEL} válido (se revisa el contenido, no solo la extensión).`],
     });
   }
   return {
-    key: newStorageKey(),
+    key,
     bytes,
-    name: safeFileName(file.name, type),
+    uploaded: true,
+    name: safeFileName(upload.fileName, type),
     mime: type.mime,
     sha256: createHash("sha256").update(bytes).digest("hex"),
   };
@@ -273,7 +292,12 @@ async function storeFileRecord(
 }
 
 /** Alta de un documento. `employeeId` viene de la URL o, desde el listado general, del formulario. */
-export async function createDocument(ctx: ActorContext, employeeId: string | null, input: unknown, file: File | null) {
+export async function createDocument(
+  ctx: ActorContext,
+  employeeId: string | null,
+  input: unknown,
+  upload: FileUpload | null,
+) {
   await assertPermission(ctx, "document:write", MODULE);
   const targetId = employeeId ?? documentWithEmployeeSchema.parse(input).employeeId;
   const data = documentSchema.parse(input);
@@ -294,7 +318,7 @@ export async function createDocument(ctx: ActorContext, employeeId: string | nul
       throw new ValidationError("El egreso al que se quiere vincular el documento no está vigente.");
     }
   }
-  const prepared = await prepareFile(file);
+  const prepared = await prepareFile(ctx, upload);
 
   return withStoredFile(prepared, () =>
     repo.transaction(async (tx) => {
@@ -342,13 +366,13 @@ const conflict = () =>
   );
 
 /** Edición de datos y, opcionalmente, reemplazo del archivo (el anterior se conserva). */
-export async function updateDocument(ctx: ActorContext, id: string, input: unknown, file: File | null) {
+export async function updateDocument(ctx: ActorContext, id: string, input: unknown, upload: FileUpload | null) {
   await assertPermission(ctx, "document:write", MODULE);
   const { version } = documentVersionSchema.parse(input);
   const data = documentSchema.parse(input);
   const current = await loadEditable(ctx, id);
   const type = await validateType(ctx, data, current.documentTypeId);
-  const prepared = await prepareFile(file);
+  const prepared = await prepareFile(ctx, upload);
 
   await withStoredFile(prepared, () =>
     repo.transaction(async (tx) => {

@@ -1,0 +1,50 @@
+name: Restaurar backup de la nube
+
+# Instalación en Vercel y Neon: restaura un backup en una base NUEVA y vacía
+# (secreto RESTORE_DIRECT_URL) y copia al almacén de la aplicación los adjuntos
+# que le falten. No toca la base en uso. Ver docs/vercel.md.
+# El repositorio es público y este log también: el script no muestra datos.
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup:
+        description: "Backup a restaurar (rrhh-AAAAMMDDTHHMMSSZ). Vacío: el último."
+        required: false
+      confirmar:
+        description: Escribí RESTAURAR para confirmar
+        required: true
+
+concurrency:
+  group: backup-nube
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  restaurar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      RESTORE_DIRECT_URL: ${{ secrets.RESTORE_DIRECT_URL }}
+      APP_BLOB_TOKEN: ${{ secrets.APP_BLOB_TOKEN }}
+      BACKUP_BLOB_TOKEN: ${{ secrets.BACKUP_BLOB_TOKEN }}
+      RESTORE_CONFIRM: ${{ inputs.confirmar }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Restaurar
+        run: npx tsx scripts/nube/restore.ts "$BACKUP"
+        env:
+          BACKUP: ${{ inputs.backup }}

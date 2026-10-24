@@ -8,31 +8,37 @@ import * as service from "./service";
 const MODULE = "documentacion";
 const id = z.uuid();
 
-/** Separa los campos de texto del archivo adjunto (campo `file`). */
+const uploadSchema = z.object({ uploadId: z.uuid(), fileName: z.string().min(1).max(500) });
+
+/**
+ * Separa los campos del formulario de la subida del adjunto: el navegador sube
+ * el archivo antes (`prepareDocumentUploadAction`) y manda su id y su nombre.
+ */
 function splitForm(form: FormData) {
   const fields: Record<string, string> = {};
-  let file: File | null = null;
-  for (const [key, value] of form.entries()) {
-    if (key === "file") file = value instanceof File && value.size > 0 ? value : null;
-    else if (typeof value === "string") fields[key] = value;
-  }
-  return { fields, file };
+  for (const [key, value] of form.entries()) if (typeof value === "string") fields[key] = value;
+  const upload = fields.uploadId ? uploadSchema.parse(fields) : null;
+  return { fields, upload };
+}
+
+export async function prepareDocumentUploadAction() {
+  return runAction(async () => service.prepareDocumentUpload(await requireActionContext("document:write", MODULE)));
 }
 
 /** `employeeId` en null: el empleado se elige en el formulario (listado general). */
 export async function createDocumentAction(employeeId: string | null, form: FormData) {
   return runAction(async () => {
     const ctx = await requireActionContext("document:write", MODULE);
-    const { fields, file } = splitForm(form);
-    return service.createDocument(ctx, employeeId === null ? null : id.parse(employeeId), fields, file);
+    const { fields, upload } = splitForm(form);
+    return service.createDocument(ctx, employeeId === null ? null : id.parse(employeeId), fields, upload);
   });
 }
 
 export async function updateDocumentAction(documentId: string, form: FormData) {
   return runAction(async () => {
     const ctx = await requireActionContext("document:write", MODULE);
-    const { fields, file } = splitForm(form);
-    return service.updateDocument(ctx, id.parse(documentId), fields, file);
+    const { fields, upload } = splitForm(form);
+    return service.updateDocument(ctx, id.parse(documentId), fields, upload);
   });
 }
 

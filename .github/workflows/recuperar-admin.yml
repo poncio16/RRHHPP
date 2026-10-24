@@ -1,0 +1,43 @@
+name: Recuperar administrador
+
+# Instalación en Vercel: no hay consola del servidor para `npm run admin:recuperar`.
+# Se ejecuta a mano (Actions → Recuperar administrador → Run workflow) con los
+# secretos DIRECT_URL, ADMIN_EMAIL y ADMIN_PASSWORD. Ver docs/vercel.md.
+# El repositorio es público y su log también: no se muestra el email.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recuperar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      DATABASE_URL: ${{ secrets.DIRECT_URL }}
+      ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Ocultar el email en el log
+        run: |
+          # GitHub oculta el secreto tal cual; el script lo muestra normalizado.
+          email="$(printf '%s' "$ADMIN_EMAIL" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [ -n "$email" ]; then echo "::add-mask::$email"; fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Recuperar el acceso
+        run: npm run admin:recuperar
