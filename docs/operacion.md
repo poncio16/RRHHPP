@@ -2,6 +2,8 @@
 
 Guía para instalar, actualizar, respaldar y mantener RRHHPP en un servidor propio (VPS) con Docker Compose. Está pensada para quien administra el servidor; no hace falta saber programar, pero sí manejarse con la consola de Linux.
 
+Para publicarlo sin un servidor propio, en Vercel y Neon como el dashboard financiero, la guía es [vercel.md](vercel.md).
+
 > El sistema guarda datos personales, salariales y de salud del personal. Son datos sensibles según la Ley 25.326 de Protección de Datos Personales: el servidor, los backups y los archivos exportados tienen que tener acceso restringido. Esta guía marca los puntos donde eso importa.
 
 Índice:

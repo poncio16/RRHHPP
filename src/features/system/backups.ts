@@ -1,7 +1,7 @@
 /*
  * Estado de los backups y de las pruebas de restauración que registran los
- * scripts del servidor (tabla `backup_run`), para el aviso del inicio
- * (funciones puras).
+ * scripts del servidor o, en Vercel, GitHub Actions (tabla `backup_run`), para
+ * el aviso del inicio (funciones puras).
  */
 import { formatDateTime } from "@/lib/format";
 

@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { parseIsoDate, toIsoDate } from "@/lib/format";
-import { createDocumentAction, updateDocumentAction } from "../actions";
+import { createDocumentAction, prepareDocumentUploadAction, updateDocumentAction } from "../actions";
 import { DOCUMENT_STATUS_LABELS, EDITABLE_STATUSES } from "../constants";
 import { suggestedExpiry } from "../expiry";
 import { FILE_ACCEPT, formatFileSize } from "../files";
@@ -130,8 +130,14 @@ export function DocumentDialog({
 
   const onFile = (selected: File | null) => {
     setFileError(undefined);
-    if (selected && selected.size > limits.maxFileSizeMb * 1024 * 1024) {
-      setFileError(`El archivo supera el máximo de ${limits.maxFileSizeMb} MB.`);
+    const problem =
+      selected && selected.size > limits.maxFileSizeMb * 1024 * 1024
+        ? `El archivo supera el máximo de ${limits.maxFileSizeMb} MB.`
+        : selected?.size === 0
+          ? "El archivo está vacío."
+          : undefined;
+    if (problem) {
+      setFileError(problem);
       setFile(null);
       setFileKey((k) => k + 1);
       return;
@@ -141,7 +147,10 @@ export function DocumentDialog({
 
   const submit = form.handleSubmit(() => {
     setFormError(undefined);
-    if (fileError) return;
+    // Un archivo rechazado al elegirlo hay que cambiarlo; si falló al subir o
+    // al guardar, se puede volver a intentar con el mismo.
+    if (fileError && !file) return;
+    setFileError(undefined);
     if (monthly && !form.getValues("period")) {
       form.setError("period", { message: `Indicá el mes al que corresponde "${type.name}".` });
       return;
@@ -154,8 +163,16 @@ export function DocumentDialog({
     if (document) data.set("version", document.version);
     if (leave) data.set("leaveRecordId", leave.id);
     if (exit) data.set("exitId", exit.id);
-    if (file) data.set("file", file);
     startTransition(async () => {
+      if (file) {
+        const upload = await uploadFile(file);
+        if (!upload.ok) {
+          setFileError(upload.message);
+          return;
+        }
+        data.set("uploadId", upload.uploadId);
+        data.set("fileName", file.name);
+      }
       const result = document
         ? await updateDocumentAction(document.id, data)
         : await createDocumentAction(employeeId, data);
@@ -363,3 +380,28 @@ export function DocumentDialog({
     </Dialog>
   );
 }
+
+/**
+ * Sube el archivo directo al almacenamiento (la propia aplicación o Vercel
+ * Blob) antes de guardar el formulario: así no pasa por la server action, que
+ * en Vercel no acepta más de 4,5 MB.
+ */
+async function uploadFile(file: File): Promise<{ ok: true; uploadId: string } | { ok: false; message: string }> {
+  const prepared = await prepareDocumentUploadAction();
+  if (!prepared.ok) return { ok: false, message: prepared.error.message };
+  const { uploadId, url, headers } = prepared.data;
+  try {
+    const response = await fetch(url, { method: "PUT", headers, body: file });
+    if (response.ok) return { ok: true, uploadId };
+    // Solo la propia aplicación explica el error en español; Vercel Blob, no.
+    if (!url.startsWith("/")) return { ok: false, message: UPLOAD_FAILED };
+    const body = (await response.json().catch(() => null)) as {
+      error?: { message?: string; fieldErrors?: { file?: string[] } };
+    } | null;
+    return { ok: false, message: body?.error?.fieldErrors?.file?.[0] ?? body?.error?.message ?? UPLOAD_FAILED };
+  } catch {
+    return { ok: false, message: UPLOAD_FAILED };
+  }
+}
+
+const UPLOAD_FAILED = "No se pudo subir el archivo. Revisá la conexión y volvé a intentarlo.";

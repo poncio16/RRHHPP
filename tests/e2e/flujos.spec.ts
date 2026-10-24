@@ -24,6 +24,9 @@ const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Bu
 /** Imagen PNG de 1 × 1 píxel. */
 const PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
+/** PDF mínimo: alcanza con la firma para que se reconozca el tipo. */
+const PDF = Buffer.from("%PDF-1.4\n% prueba e2e\n%%EOF\n");
+
 async function noHorizontalScroll(page: Page) {
   return page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 }
@@ -151,6 +154,26 @@ test.describe.serial("ciclo de un legajo", () => {
     await dialog.getByRole("button", { name: "Registrar aprobada" }).click();
     await expect(dialog).toBeHidden();
     await expect(page.locator("tbody tr").filter({ hasText: "Enfermedad" }).filter({ visible: true })).toHaveCount(1);
+  });
+
+  test("documento con archivo: se sube directo al almacenamiento y se descarga igual", async ({ page }) => {
+    await page.goto(`${employeeUrl}/documentacion`);
+    await page.getByRole("button", { name: "Nuevo documento" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.locator("#doc-type").selectOption({ label: "DNI" });
+    await dialog
+      .locator("#doc-file")
+      .setInputFiles({ name: "dni frente.pdf", mimeType: "application/pdf", buffer: PDF });
+    const upload = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/subidas/"));
+    await dialog.getByRole("button", { name: "Registrar" }).click();
+    expect((await upload).status()).toBe(204);
+    await expect(dialog).toBeHidden();
+
+    const link = page.getByRole("link", { name: "Descargar dni frente.pdf" }).filter({ visible: true });
+    const download = await page.request.get(new URL((await link.getAttribute("href"))!, page.url()).href);
+    expect(download.status()).toBe(200);
+    expect(download.headers()["content-type"]).toBe("application/pdf");
+    expect(Buffer.from(await download.body()).equals(PDF)).toBe(true);
   });
 
   test("formulario de entrega de EPP para imprimir", async ({ page }) => {

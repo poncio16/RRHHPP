@@ -5,6 +5,7 @@ Aplicación web de gestión de personal para una PyME argentina: legajos, docume
 > **Estado:** versión 1 completa (16 fases). Lo que queda fuera de esta versión está en [Limitaciones de la versión 1](#limitaciones-de-la-versión-1).
 
 - Instalación y operación en un servidor (Docker, HTTPS, backups): [docs/operacion.md](docs/operacion.md)
+- Instalación en Vercel y Neon, sin servidor propio (backups con GitHub Actions): [docs/vercel.md](docs/vercel.md)
 - Diseño técnico aprobado y decisiones de implementación: [docs/arquitectura.md](docs/arquitectura.md)
 - El sistema **no** liquida sueldos ni emite comprobantes fiscales: registra la información que informa el sistema de liquidación de la empresa.
 
@@ -19,12 +20,12 @@ Aplicación web de gestión de personal para una PyME argentina: legajos, docume
 | Logs          | pino (JSON)                                                              |
 | Tests         | Vitest (unitarios e integración contra PostgreSQL real), Playwright      |
 | Calidad       | ESLint, Prettier, GitHub Actions                                         |
-| Producción    | Docker Compose (aplicación y PostgreSQL) detrás de nginx con HTTPS       |
+| Producción    | Docker Compose detrás de nginx con HTTPS, o Vercel, Neon y Vercel Blob   |
 
 ## Requisitos
 
 - **Desarrollo**: Node.js 24 LTS (la versión de la imagen de producción y de CI; 22.12 o superior también funciona) y PostgreSQL 16 o superior, o Docker para levantarlo con `docker compose`.
-- **Producción**: un servidor Linux con Docker y Docker Compose, un dominio y HTTPS. Ver [Ejecución en producción](#ejecución-en-producción).
+- **Producción**: un servidor Linux con Docker y Docker Compose, un dominio y HTTPS, o cuentas de Vercel (plan Pro) y Neon. Ver [Ejecución en producción](#ejecución-en-producción).
 
 ## Instalación para desarrollo
 
@@ -46,12 +47,14 @@ Si usás un PostgreSQL propio en lugar de Docker, creá dos bases (`rrhh` y `rrh
 | Variable                                  | Uso                                                                                                        |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`                            | Conexión a PostgreSQL.                                                                                     |
+| `DIRECT_URL`                              | Solo con Neon: conexión sin pooler, para las migraciones. Sin definir, se usa `DATABASE_URL`.              |
 | `TEST_DATABASE_URL`                       | Base usada por los tests de integración. **Se borra en cada corrida**; nunca apuntarla a datos reales.     |
 | `APP_URL`                                 | URL pública de la aplicación. Se valida y se muestra en el log al iniciar.                                 |
+| `STORAGE_DRIVER`                          | `local` (por defecto, la carpeta `STORAGE_DIR`) o `vercel-blob` (almacén privado de Vercel Blob).          |
 | `STORAGE_DIR`                             | Carpeta de archivos adjuntos (persistente en producción).                                                  |
 | `LOG_LEVEL`                               | `fatal`, `error`, `warn`, `info`, `debug`, `trace` o `silent`.                                             |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Administrador inicial que crea el seed si todavía no existe. Debe cambiar la contraseña al ingresar.       |
-| `TRUSTED_PROXY`                           | `true` detrás de un proxy inverso que fija `X-Real-IP` o agrega la IP a `X-Forwarded-For`.                 |
+| `TRUSTED_PROXY`                           | `true` detrás de un proxy inverso que fija `X-Real-IP` o agrega la IP a `X-Forwarded-For`. En Vercel, sí.  |
 | `NODE_ENV`                                | Lo fijan Next.js y la imagen de producción (`production`). Con `production` el seed carga solo datos base. |
 
 Al arrancar, la aplicación valida las variables: si falta alguna o tiene un formato inválido, no arranca y el log dice cuál es. En producción con Docker las variables salen de `.env.production.example` (ver [docs/operacion.md](docs/operacion.md#32-archivo-env)).
@@ -100,7 +103,12 @@ Nunca las corras contra una base con datos reales: dan de alta y egresan emplead
 
 ## Ejecución en producción
 
-La forma prevista es Docker Compose en un servidor propio, detrás de nginx con HTTPS. La guía completa, paso a paso, está en [docs/operacion.md](docs/operacion.md). En resumen:
+Hay dos formas de instalarlo, con la misma aplicación:
+
+- **Servidor propio**: Docker Compose detrás de nginx con HTTPS. La guía completa, paso a paso, está en [docs/operacion.md](docs/operacion.md) y se resume abajo.
+- **Vercel y Neon**, como el dashboard financiero: sin servidor que mantener, con los adjuntos en Vercel Blob y los backups en GitHub Actions (`scripts/nube`, `.github/workflows/*-nube.yml`). Guía: [docs/vercel.md](docs/vercel.md).
+
+Con Docker, en resumen:
 
 ```bash
 cp .env.production.example .env && chmod 600 .env   # completar contraseñas y APP_URL
@@ -214,11 +222,11 @@ En **Documentación** (menú) se ven los documentos de todos los legajos y en la
 - **Obligatorios faltantes**: **Documentación → Obligatorios faltantes** lista los legajos activos a los que les falta algún documento obligatorio, con cuáles, y se puede buscar por empleado o filtrar por documento; la pestaña **Documentación** del legajo avisa lo mismo arriba. Cuenta como cargado cualquier documento del tipo que no esté anulado, aunque esté pendiente, observado o vencido, porque esos casos ya tienen su propio aviso. Sin permiso de datos de salud no se controlan los tipos sensibles.
 - **Mensuales**: cada documento de un tipo mensual se carga con su **Mes** (el formulario lo pide). Falta cada mes sin el suyo, desde el mes en que se empieza a controlar o el de ingreso, el que sea posterior, y un mes se reclama cuando pasaron los días de Parámetros → Documentación ("Plazo para cargar los documentos mensuales", 10 por defecto) desde su último día: con 10 días, el recibo de septiembre se pide desde el 11 de octubre.
 - **Vencimientos**: un documento es válido hasta su fecha de vencimiento inclusive y figura "por vencer" cuando faltan los días de anticipación del tipo o, si no tiene, los de Parámetros → Documentación.
-- **Archivos**: PDF, PNG o JPG, hasta el tamaño configurado en Parámetros (tope técnico 20 MB). El tipo se verifica por el contenido, el archivo se guarda en `STORAGE_DIR` con un nombre interno aleatorio y su hash SHA-256, y nunca se sirve en forma pública: se descarga por una ruta que verifica la sesión y los permisos, y cada descarga queda en la auditoría.
+- **Archivos**: PDF, PNG o JPG, hasta el tamaño configurado en Parámetros (tope técnico 20 MB). El tipo se verifica por el contenido, el archivo se guarda en `STORAGE_DIR` (o en Vercel Blob) con un nombre interno aleatorio y su hash SHA-256, y nunca se sirve en forma pública: se descarga por una ruta que verifica la sesión y los permisos, y cada descarga queda en la auditoría.
 - **Nada se borra**: un documento se anula con un motivo y deja de contar para los vencimientos. Al reemplazar el archivo, el anterior queda guardado.
 - **Permisos**: "Ver documentación" para consultar y descargar, "Registrar documentación" para cargar, editar y anular, y "Ver datos de salud" para los tipos marcados como sensibles (sin ese permiso no aparecen ni se pueden descargar).
 
-En producción, `STORAGE_DIR` es el volumen `storage` de Docker y entra en cada backup junto con la base de datos (ver [Backups](docs/operacion.md#6-backups)).
+El navegador sube el archivo antes de guardar el formulario (a la aplicación o, en Vercel, directo al almacén, porque Vercel no acepta pedidos de más de 4,5 MB) y el servidor lo valida al guardar; un archivo subido que no se usa se descarta. En producción con Docker, `STORAGE_DIR` es el volumen `storage` y entra en cada backup junto con la base de datos (ver [Backups](docs/operacion.md#6-backups)); en Vercel, los adjuntos se copian a otro almacén con cada backup ([docs/vercel.md](docs/vercel.md#5-backups)).
 
 ## Licencias, ausencias y vacaciones
 

@@ -88,6 +88,36 @@ jobs:
           # El seed obliga a cambiar la contraseña inicial; las pruebas la cambian por esta.
           E2E_NEW_PASSWORD: clave-e2e-ci-2026
 
+      # Los scripts de la instalación en Vercel con carpetas locales en lugar de
+      # Vercel Blob. Después de las pruebas de punta a punta, que suben adjuntos.
+      - name: Backup en la nube y prueba de restauración
+        env:
+          DIRECT_URL: postgresql://rrhh:rrhh@localhost:5432/rrhh
+          BACKUP_DIR: ${{ runner.temp }}/backups-nube
+        run: |
+          export PGPASSWORD=rrhh
+          # Relleno para que el dump pase los 2 MB, como una base real: con uno
+          # chico no se ven los problemas de los procesos que lo leen a medias.
+          psql -h localhost -U rrhh -d rrhh -q -c "CREATE TABLE relleno_ci AS SELECT md5(random()::text) || md5(random()::text) AS x FROM generate_series(1, 100000)"
+          npx tsx scripts/nube/backup.ts
+          npx tsx scripts/nube/backup.ts
+          npx tsx scripts/nube/restore-test.ts
+          # Un dump alterado no pasa la prueba.
+          echo x >>"$(ls -d "$BACKUP_DIR"/rrhh-* | tail -n 1)/base.dump"
+          if npx tsx scripts/nube/restore-test.ts; then exit 1; fi
+          n="$(psql -h localhost -U rrhh -d rrhh -At -c "SELECT count(*) FROM stored_file")"
+          if [ "$n" -lt 2 ]; then echo "Se esperaban adjuntos de las pruebas de punta a punta." >&2; exit 1; fi
+          cat >esperados-nube.txt <<EOF
+          BACKUP|t|Base: *. Adjuntos: $n ($n nuevos).
+          BACKUP|t|Base: *. Adjuntos: $n (0 nuevos).
+          PRUEBA_RESTAURACION|t|* filas, $n archivos.
+          PRUEBA_RESTAURACION|f|Error al verificar la suma SHA-256: el dump no coincide.
+          EOF
+          psql -h localhost -U rrhh -d rrhh -At -c "SELECT kind, ok, detail FROM backup_run ORDER BY finished_at" \
+            | sed -E -e 's/Base: [0-9,]+ [KMG]B/Base: */' -e 's/^(PRUEBA_RESTAURACION\|t\|)[0-9.]+ filas/\1* filas/' \
+            | tee registros-nube.txt
+          diff esperados-nube.txt registros-nube.txt
+
       - name: Guardar el reporte de las pruebas de punta a punta
         if: failure()
         uses: actions/upload-artifact@v4

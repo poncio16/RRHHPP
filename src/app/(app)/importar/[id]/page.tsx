@@ -23,6 +23,13 @@ import { z } from "@/lib/zod";
 
 export const metadata: Metadata = { title: "Vista previa de la importación" };
 
+/**
+ * Confirmar la importación crea hasta 500 legajos en una transacción de hasta
+ * 120 segundos (src/features/employees/service.ts). En Vercel, el tiempo
+ * máximo de las server actions de esta página.
+ */
+export const maxDuration = 300;
+
 type Props = PageProps<"/importar/[id]">;
 
 const FILTERS = { todas: "Todas", problemas: "Con problemas", validas: "Válidas" } as const;

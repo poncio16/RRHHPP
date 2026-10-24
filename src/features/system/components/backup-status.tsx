@@ -6,6 +6,9 @@ import { formatDateTime } from "@/lib/format";
 import { type BackupCheck, elapsed } from "../backups";
 import type { BackupStatus } from "../service";
 
+/** En Vercel los backups los hace GitHub Actions (scripts/nube); con Docker, el cron del servidor. */
+const ON_VERCEL = process.env.VERCEL === "1";
+
 /** Aviso en rojo del inicio: un backup o una prueba de restauración que falló o está atrasado. */
 export function BackupAlert({ status }: { status: BackupStatus }) {
   const alerts = [status.backup.alert, status.restoreTest.alert].filter((alert) => alert !== null);
@@ -19,7 +22,9 @@ export function BackupAlert({ status }: { status: BackupStatus }) {
         ))}
       </ul>
       <p className="mt-2">
-        Quien administra el servidor encuentra el detalle en el log de los backups (docs/operacion.md, sección 10).
+        {ON_VERCEL
+          ? "El detalle está en el log de los backups, en GitHub Actions (docs/vercel.md)."
+          : "Quien administra el servidor encuentra el detalle en el log de los backups (docs/operacion.md, sección 10)."}
       </p>
     </Alert>
   );
@@ -31,7 +36,11 @@ export function BackupCard({ status, now }: { status: BackupStatus; now: Date })
     <Card>
       <CardHeader>
         <CardTitle>Backups</CardTitle>
-        <CardDescription>Los registran los scripts de backup del servidor.</CardDescription>
+        <CardDescription>
+          {ON_VERCEL
+            ? "Los registran los backups de GitHub Actions."
+            : "Los registran los scripts de backup del servidor."}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
         <dl className="space-y-4">
