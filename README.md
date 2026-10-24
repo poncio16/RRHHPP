@@ -4,7 +4,7 @@ Aplicación web de gestión de personal para una PyME argentina: legajos, docume
 
 > **Estado:** versión 1 completa (16 fases). Lo que queda fuera de esta versión está en [Limitaciones de la versión 1](#limitaciones-de-la-versión-1).
 
-- Instalación y operación en un servidor (Docker, HTTPS, backups): [docs/operacion.md](docs/operacion.md)
+- Instalación y operación en un servidor (Docker, HTTPS, backups): [docs/operacion.md](docs/operacion.md). También sirve una PC de la oficina con Linux, publicada con Cloudflare Tunnel ([sección 4.3](docs/operacion.md#43-sin-ip-pública-cloudflare-tunnel))
 - Instalación en Vercel y Neon, sin servidor propio (backups con GitHub Actions): [docs/vercel.md](docs/vercel.md)
 - Diseño técnico aprobado y decisiones de implementación: [docs/arquitectura.md](docs/arquitectura.md)
 - El sistema **no** liquida sueldos ni emite comprobantes fiscales: registra la información que informa el sistema de liquidación de la empresa.
@@ -105,7 +105,7 @@ Nunca las corras contra una base con datos reales: dan de alta y egresan emplead
 
 Hay dos formas de instalarlo, con la misma aplicación:
 
-- **Servidor propio**: Docker Compose detrás de nginx con HTTPS. La guía completa, paso a paso, está en [docs/operacion.md](docs/operacion.md) y se resume abajo.
+- **Servidor propio**: Docker Compose detrás de nginx con HTTPS. La guía completa, paso a paso, está en [docs/operacion.md](docs/operacion.md) y se resume abajo. Sin IP pública (una PC en la oficina), nginx se publica con Cloudflare Tunnel ([sección 4.3](docs/operacion.md#43-sin-ip-pública-cloudflare-tunnel)), sin costo mensual.
 - **Vercel y Neon**, como el dashboard financiero: sin servidor que mantener, con los adjuntos en Vercel Blob y los backups en GitHub Actions (`scripts/nube`, `.github/workflows/*-nube.yml`). Guía: [docs/vercel.md](docs/vercel.md).
 
 Con Docker, en resumen:

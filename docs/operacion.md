@@ -2,6 +2,8 @@
 
 Guía para instalar, actualizar, respaldar y mantener RRHHPP en un servidor propio (VPS) con Docker Compose. Está pensada para quien administra el servidor; no hace falta saber programar, pero sí manejarse con la consola de Linux.
 
+El servidor también puede ser una PC de la oficina con Linux, sin IP pública: Cloudflare Tunnel la publica con HTTPS sin abrir puertos (sección 4.3). Es la opción sin costo mensual.
+
 Para publicarlo sin un servidor propio, en Vercel y Neon como el dashboard financiero, la guía es [vercel.md](vercel.md).
 
 > El sistema guarda datos personales, salariales y de salud del personal. Son datos sensibles según la Ley 25.326 de Protección de Datos Personales: el servidor, los backups y los archivos exportados tienen que tener acceso restringido. Esta guía marca los puntos donde eso importa.
@@ -59,6 +61,7 @@ No hay otros servicios: ni colas, ni tareas programadas dentro de la aplicación
 - **Docker Engine** 24 o posterior con el plugin **Docker Compose** 2.24 o posterior (`docker compose version`). Instalalo desde los repositorios oficiales de Docker: <https://docs.docker.com/engine/install/>.
 - **nginx** y **certbot** en el servidor (sección 4), y un **dominio** (por ejemplo `rrhh.empresa.com.ar`) que apunte a la IP del servidor.
 - Puertos abiertos hacia internet: solo 22 (SSH), 80 y 443.
+- Sin IP pública (una PC en la oficina): en lugar de certbot y los puertos, Cloudflare Tunnel y un dominio administrado en Cloudflare (sección 4.3).
 - Reloj sincronizado (NTP; viene activado en Debian y Ubuntu). La zona horaria del servidor no importa: la base trabaja en UTC y la aplicación muestra todo en la hora de Buenos Aires.
 
 ## 3. Primera instalación
@@ -187,6 +190,46 @@ La renovación usa la ruta `/.well-known/acme-challenge/` del puerto 80, que el 
 Si el sitio se publica en un puerto que no es el 443 (por ejemplo `https://servidor:8443`), cambiá `$host` por `$http_host` en `Host` y `X-Forwarded-Host`: `$host` no incluye el puerto y la aplicación rechaza los formularios porque el origen no coincide.
 
 Otro proxy (Caddy, Traefik, un balanceador) sirve igual si cumple lo mismo: HTTPS, límite de 21 MB, sin buffering, los mismos encabezados y la aplicación accesible solo desde el proxy.
+
+### 4.3. Sin IP pública: Cloudflare Tunnel
+
+Para instalarlo en una PC de la oficina, o en cualquier servidor sin IP pública, Cloudflare Tunnel reemplaza a certbot y a los puertos abiertos. `cloudflared`, instalado en la PC, mantiene una conexión saliente con Cloudflare: los pedidos a `https://rrhh.<dominio>` llegan por ella a nginx, que escucha solo en `127.0.0.1:8080`. Cloudflare pone el certificado HTTPS. Se usa con el plan gratuito de Cloudflare.
+
+```
+Internet ──HTTPS──▶ Cloudflare ══ túnel ══▶ cloudflared (en la PC)
+                                              │  http://127.0.0.1:8080
+                                              ▼
+                                            nginx ──▶ aplicación (127.0.0.1:3000)
+```
+
+Antes de empezar:
+
+- **La PC**: los mismos requisitos de la sección 2 (Linux de 64 bits, Docker, 4 GB de RAM o 2 GB con swap), siempre prendida y con internet. Se entra siempre por la dirección pública, también desde la oficina: si se corta la luz o internet, nadie puede usar el sistema hasta que vuelva.
+- **Un dominio administrado en Cloudflare**: hay que cambiar sus servidores de nombres a los de Cloudflare. Con el plan gratuito no se puede pasar solo un subdominio ([condiciones](https://developers.cloudflare.com/dns/zone-setups/partial-setup/)): si el dominio de la empresa tiene otros registros (correo, sitio web), lo más simple es registrar uno aparte para RRHH.
+- **Los datos pasan por Cloudflare**: el HTTPS termina en sus servidores, que ven los pedidos (con datos del personal) antes de reenviarlos a la PC. Consultalo con el asesor, como cualquier servicio externo (Ley 25.326).
+- **Backups fuera de la PC**: una PC de oficina se puede romper o perder; la copia cifrada de la sección 6.4 es indispensable.
+
+Pasos (en lugar de la sección 4.1; el resto de la instalación es igual):
+
+1. En Cloudflare, agregá el dominio con el plan **Free** y cambiá sus servidores de nombres donde lo registraste (en NIC Argentina, para un `.com.ar`). Esperá a que figure **Active**.
+2. En **Networking → Tunnels → Create a tunnel**, creá un túnel llamado `rrhh`, elegí **Debian** (sirve para Ubuntu) y corré en la PC el comando que muestra Cloudflare: instala `cloudflared` y lo deja como servicio que arranca solo. El comando incluye un token que da acceso al túnel: no lo guardes en el repositorio ni lo compartas.
+3. En ese túnel, pestaña **Routes → Add route → Published application**: subdominio `rrhh`, tu dominio y **Service URL** `http://localhost:8080`.
+4. En **SSL/TLS → Edge Certificates**, activá **Always Use HTTPS**: así `http://` redirige a `https://` (la cookie de sesión solo viaja por HTTPS).
+5. nginx, con la variante para el túnel ([`deploy/nginx/rrhh-cloudflare-tunnel.conf`](../deploy/nginx/rrhh-cloudflare-tunnel.conf)):
+
+   ```bash
+   sudo apt install nginx
+   sudo cp deploy/nginx/rrhh-cloudflare-tunnel.conf /etc/nginx/sites-available/rrhh.conf
+   sudo sed -i 's/rrhh.ejemplo.com.ar/rrhh.empresa.com.ar/g' /etc/nginx/sites-available/rrhh.conf
+   sudo ln -s /etc/nginx/sites-available/rrhh.conf /etc/nginx/sites-enabled/
+   sudo rm /etc/nginx/sites-enabled/default
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+
+6. En el `.env`, `APP_URL=https://rrhh.<dominio>` y `TRUSTED_PROXY=true`, como en cualquier instalación.
+7. Probá `https://rrhh.<dominio>/login` desde un celular con datos móviles, fuera de la red de la oficina.
+
+La variante hace lo mismo que `rrhh.conf` (sección 4.2), con dos diferencias: toma la IP de cada visitante del encabezado `CF-Connecting-IP`, que solo acepta de `cloudflared` (así el límite de intentos de ingreso y la auditoría usan la IP real), e informa a la aplicación que el pedido llegó por HTTPS. No hay puertos 80 ni 443 que abrir ni certificado que renovar. Las descargas y exportaciones van con `Cache-Control: private, no-store`, así que Cloudflare no las guarda.
 
 ## 5. Actualizar a una versión nueva
 
