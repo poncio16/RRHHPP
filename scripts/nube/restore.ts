@@ -22,6 +22,8 @@ import {
   docker,
   DUMP,
   FILES_PREFIX,
+  logUnexpected,
+  onInterrupt,
   plural,
   postgresImage,
   query,
@@ -38,6 +40,10 @@ import {
 
 async function main(): Promise<number> {
   const steps = new Steps();
+  onInterrupt(async () => {
+    console.error(`Restauración FALLIDA: ${steps.interrupted()}`);
+    await removeTempDir();
+  });
   try {
     steps.at("en la confirmación");
     if (process.env.RESTORE_CONFIRM?.trim() !== "RESTAURAR") throw new StepError("hay que escribir RESTAURAR");
@@ -132,7 +138,7 @@ async function main(): Promise<number> {
     return 0;
   } catch (error) {
     console.error(`Restauración FALLIDA: ${steps.reason(error)}`);
-    if (!(error instanceof StepError)) console.error(error);
+    logUnexpected(error);
     return 1;
   } finally {
     await removeTempDir();

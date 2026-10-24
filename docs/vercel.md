@@ -63,7 +63,7 @@ Guardalas en el gestor de contraseñas de la empresa: dan acceso completo a los 
 
 ### 3.2. Almacenes de Vercel Blob
 
-En Vercel, **Storage → Create → Blob**, creá dos almacenes **privados** en la región São Paulo (`gru1`):
+En Vercel, **Storage → Create → Blob**, creá dos almacenes **privados** en la región São Paulo (`gru1`). Que sean privados es indispensable: en uno público, cualquiera con la dirección de un archivo puede abrirlo sin ingresar a la aplicación.
 
 1. `rrhh-archivos`: **conectalo al proyecto** de RRHH (sección 3.3), solo al entorno **Production**. Vercel agrega las variables que usa la aplicación.
 2. `rrhh-backups`: **no** lo conectes a ningún proyecto.
@@ -168,7 +168,7 @@ Los domingos a las 4:30 GitHub Actions corre `scripts/nube/restore-test.ts`, que
 
 Termina con una línea como `Prueba de restauración correcta para rrhh-20261012T063000Z: 15.230 filas, 412 archivos.` y registra el resultado para el Inicio. Para probar un backup en particular: **Run workflow → prueba de restauración**, con su nombre en el campo **backup**.
 
-Si `pg_restore` falla, el log muestra solo su código de salida: el detalle puede traer datos de una fila y el log es público. Para verlo, restaurá el backup en una base propia (sección 7).
+Si `pg_restore` falla, el log muestra solo su código de salida: el detalle puede traer datos de una fila y el log es público. Para verlo, seguí el paso de `pg_restore` de la sección 10.
 
 ## 7. Restauración
 

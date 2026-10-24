@@ -28,6 +28,8 @@ import {
   dumpDatabase,
   FILES_PREFIX,
   humanSize,
+  logUnexpected,
+  onInterrupt,
   plural,
   query,
   recordRun,
@@ -44,6 +46,11 @@ import {
 
 async function main(): Promise<number> {
   const steps = new Steps();
+  onInterrupt(async () => {
+    console.error(`Backup FALLIDO: ${steps.interrupted()}`);
+    await recordRun("BACKUP", false, "", steps.interrupted());
+    await removeTempDir();
+  });
   const name = backupName();
   try {
     const retentionDays = Number(process.env.BACKUP_RETENTION_DAYS?.trim() || "30");
@@ -119,7 +126,7 @@ async function main(): Promise<number> {
   } catch (error) {
     const reason = steps.reason(error);
     console.error(`Backup FALLIDO: ${reason}`);
-    if (!(error instanceof StepError)) console.error(error);
+    logUnexpected(error);
     await recordRun("BACKUP", false, "", reason);
     return 1;
   } finally {

@@ -7,6 +7,7 @@ import { addDays } from "@/features/documents/expiry";
 import { toIsoDate, todayInTimeZone } from "@/lib/format";
 import type { ActorContext } from "@/server/context";
 import { db } from "@/server/db";
+import { storage } from "@/server/storage";
 import { ConflictError, ForbiddenError, NotFoundError, toAppError, ValidationError } from "@/server/errors";
 import { actorFor, createTestUser, lastAudit } from "./helpers";
 
@@ -244,6 +245,21 @@ describe("subidas directas", () => {
     expect(await db.document.findUniqueOrThrow({ where: { id } })).toMatchObject({ fileId: expect.any(String) });
   });
 
+  it("no pisa un archivo que ya llegó ni recibe otro después de usarla", async () => {
+    const { uploadId } = await documents.prepareDocumentUpload(rrhh);
+    await receiveUpload(rrhh, uploadId, new Blob([PDF]).stream(), PDF.length);
+    const other = new TextEncoder().encode("%PDF-1.4\n%otro\n%%EOF\n");
+    expect(await appErrorOf(receiveUpload(rrhh, uploadId, new Blob([other]).stream(), other.length))).toBeInstanceOf(
+      ConflictError,
+    );
+    const { id } = await documents.createDocument(rrhh, refs.employee, base(), { uploadId, fileName: "a.pdf" });
+    expect(await appErrorOf(receiveUpload(rrhh, uploadId, new Blob([other]).stream(), other.length))).toBeInstanceOf(
+      NotFoundError,
+    );
+    const file = await documents.openDocumentFile(rrhh, id);
+    expect(new Uint8Array(await new Response(file.stream).arrayBuffer())).toEqual(PDF);
+  });
+
   it("sin el archivo subido no registra nada", async () => {
     const { uploadId } = await documents.prepareDocumentUpload(rrhh);
     const error = await appErrorOf(
@@ -252,16 +268,29 @@ describe("subidas directas", () => {
     expect(error).toMatchObject({ fieldErrors: { file: [expect.stringContaining("No llegó el archivo")] } });
   });
 
-  it("descarta las subidas que nadie usó, con su archivo", async () => {
+  it("descarta las subidas viejas y sus archivos, salvo los que quedaron registrados", async () => {
+    // Una que nadie usó, una cuyo archivo llegó después de guardar el formulario
+    // sin él (como una subida tardía a Vercel Blob) y una que quedó registrada.
     const unused = await pdf();
-    const pending = await db.pendingUpload.update({
-      where: { id: unused.uploadId },
+    const late = await documents.prepareDocumentUpload(rrhh);
+    await appErrorOf(
+      documents.createDocument(rrhh, refs.employee, base(), { uploadId: late.uploadId, fileName: "b.pdf" }),
+    );
+    const lateKey = (await db.pendingUpload.findUniqueOrThrow({ where: { id: late.uploadId } })).storageKey;
+    await storage().put(lateKey, PDF);
+    const used = await pdf();
+    const { id } = await documents.createDocument(rrhh, refs.employee, base(), used);
+    const ids = [unused.uploadId, late.uploadId, used.uploadId];
+    await db.pendingUpload.updateMany({
+      where: { id: { in: ids } },
       data: { createdAt: new Date(Date.now() - 61 * 60_000) },
     });
     const before = await storedFiles();
     await documents.prepareDocumentUpload(rrhh);
-    expect(await db.pendingUpload.findUnique({ where: { id: pending.id } })).toBeNull();
-    expect(await storedFiles()).toBe(before - 1);
+    expect(await db.pendingUpload.count({ where: { id: { in: ids } } })).toBe(0);
+    expect(await storedFiles()).toBe(before - 2);
+    const file = await documents.openDocumentFile(rrhh, id);
+    expect(new Uint8Array(await new Response(file.stream).arrayBuffer())).toEqual(PDF);
   });
 
   it("solo con permiso para cargar documentos", async () => {
@@ -320,8 +349,13 @@ describe("edición y anulación", () => {
     expect(updated.file!.originalName).toBe("v2.pdf");
     expect(await db.storedFile.findUnique({ where: { id: first.fileId! } })).not.toBeNull();
 
-    const conflict = await appErrorOf(documents.updateDocument(rrhh, id, { ...base(), version: stale }, null));
+    const before = await storedFiles();
+    const conflict = await appErrorOf(
+      documents.updateDocument(rrhh, id, { ...base(), version: stale }, await pdf("v3.pdf")),
+    );
     expect(conflict).toBeInstanceOf(ConflictError);
+    // El archivo que llegó se descarta: el cambio no se guardó.
+    expect(await storedFiles()).toBe(before);
   });
 
   it("anula con motivo y después no permite editar", async () => {

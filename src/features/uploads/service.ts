@@ -1,9 +1,10 @@
 import "server-only";
 import type { ActorContext } from "@/server/context";
-import { NotFoundError, ValidationError } from "@/server/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { logger } from "@/server/logger";
 import {
   discardQuietly,
+  FileExistsError,
   FileTooLargeError,
   newStorageKey,
   readLimited,
@@ -19,8 +20,11 @@ import * as repo from "./repository";
  * guarda el formulario).
  */
 export const UPLOAD_TTL_MINUTES = 30;
-/** Las que nadie usó se descartan después, con margen por si alguna se está guardando. */
-const ABANDONED_AFTER_MINUTES = 2 * UPLOAD_TTL_MINUTES;
+/**
+ * Después, con margen por si alguna se está guardando, se descartan las
+ * subidas viejas y sus archivos, salvo los que quedaron registrados.
+ */
+const DISCARD_AFTER_MINUTES = 2 * UPLOAD_TTL_MINUTES;
 const CLEANUP_BATCH = 20;
 
 export type PreparedUpload = { uploadId: string } & UploadTarget;
@@ -39,8 +43,8 @@ export async function createUpload(ctx: ActorContext, maxBytes: number): Promise
   const upload = await repo.createPendingUpload({ storageKey: newStorageKey(), userId: ctx.userId, maxBytes });
   const expiresAt = new Date(upload.createdAt.getTime() + UPLOAD_TTL_MINUTES * 60_000);
   const target = await storage().uploadTarget({ id: upload.id, key: upload.storageKey, maxBytes, expiresAt });
-  await discardAbandonedUploads().catch((error: unknown) =>
-    logger.error({ err: error }, "No se pudieron descartar las subidas abandonadas"),
+  await discardExpiredUploads().catch((error: unknown) =>
+    logger.error({ err: error }, "No se pudieron descartar las subidas vencidas"),
   );
   return { uploadId: upload.id, ...target };
 }
@@ -55,7 +59,7 @@ export async function receiveUpload(
   body: ReadableStream<Uint8Array> | null,
   declaredBytes: number | null,
 ): Promise<void> {
-  const upload = await repo.findPendingUpload(id, ctx.userId, minutesAgo(UPLOAD_TTL_MINUTES));
+  const upload = await repo.findOpenUpload(id, ctx.userId, minutesAgo(UPLOAD_TTL_MINUTES));
   if (!upload) throw new NotFoundError("La subida venció o no existe. Volvé a guardar el formulario.");
   if (!body) throw fileError("No llegó el archivo.");
   if (declaredBytes !== null && declaredBytes > upload.maxBytes) throw tooLarge(upload.maxBytes);
@@ -63,13 +67,17 @@ export async function receiveUpload(
     throw error instanceof FileTooLargeError ? tooLarge(upload.maxBytes) : error;
   });
   if (bytes.byteLength === 0) throw fileError("No llegó el archivo.");
-  await storage().put(upload.storageKey, bytes);
+  await storage()
+    .put(upload.storageKey, bytes)
+    .catch((error: unknown) => {
+      throw error instanceof FileExistsError ? new ConflictError("El archivo de esta subida ya llegó.") : error;
+    });
 }
 
 /**
- * Consume la subida al guardar el formulario y devuelve el archivo completo
- * para validarlo. Si no sirve, el archivo se descarta: nunca quedó asociado
- * a un registro.
+ * Usa la subida al guardar el formulario y devuelve el archivo completo para
+ * validarlo. Desde ese momento no se puede volver a usar. Si el archivo no sirve,
+ * se descarta: nunca quedó asociado a un registro.
  */
 export async function claimUpload(ctx: ActorContext, id: string): Promise<{ key: string; bytes: Uint8Array }> {
   const upload = await repo.claimPendingUpload(id, ctx.userId, minutesAgo(UPLOAD_TTL_MINUTES));
@@ -89,12 +97,22 @@ export async function claimUpload(ctx: ActorContext, id: string): Promise<{ key:
   return { key, bytes };
 }
 
-/** Descarta las subidas que nadie usó y sus archivos, si llegaron a subirse. */
-export async function discardAbandonedUploads(now = new Date()): Promise<number> {
-  const abandoned = await repo.listAbandonedUploads(minutesAgo(ABANDONED_AFTER_MINUTES, now), CLEANUP_BATCH);
-  for (const upload of abandoned) {
-    await storage().discard(upload.storageKey);
-    await repo.deletePendingUpload(upload.id);
+/**
+ * Descarta las subidas viejas. Su archivo se borra salvo que haya quedado
+ * registrado: el de una subida que nadie usó, el que llegó después de que se
+ * guardó el formulario sin él o el de un guardado que falló.
+ */
+export async function discardExpiredUploads(now = new Date()): Promise<number> {
+  const expired = await repo.listExpiredUploads(minutesAgo(DISCARD_AFTER_MINUTES, now), CLEANUP_BATCH);
+  let discarded = 0;
+  for (const upload of expired) {
+    try {
+      if (!(await repo.isStoredKey(upload.storageKey))) await storage().discard(upload.storageKey);
+      await repo.deletePendingUpload(upload.id);
+      discarded++;
+    } catch (error) {
+      logger.error({ err: error, uploadId: upload.id }, "No se pudo descartar una subida vencida");
+    }
   }
-  return abandoned.length;
+  return discarded;
 }

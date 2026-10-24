@@ -17,13 +17,13 @@ jobs:
     timeout-minutes: 10
 
     env:
-      DATABASE_URL: ${{ secrets.DIRECT_URL }}
-      ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
-      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
       NEXT_TELEMETRY_DISABLED: "1"
 
+    # Los secretos van solo a los pasos que los usan (no a `npm ci`).
     steps:
       - name: Ocultar el email en el log
+        env:
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
         run: |
           # GitHub oculta el secreto tal cual; el script lo muestra normalizado.
           email="$(printf '%s' "$ADMIN_EMAIL" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
@@ -41,3 +41,7 @@ jobs:
 
       - name: Recuperar el acceso
         run: npm run admin:recuperar
+        env:
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}

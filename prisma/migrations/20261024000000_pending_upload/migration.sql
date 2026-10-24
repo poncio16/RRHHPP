@@ -1,6 +1,6 @@
 -- Subidas directas del navegador al almacenamiento, pendientes de asociarse a
--- un documento. Son filas técnicas: se consumen al guardar el formulario y las
--- que nadie usó se borran junto con su archivo (nunca quedó en un registro).
+-- un documento. Son filas técnicas: se consumen al guardar el formulario y se
+-- borran cuando vence la subida, junto con su archivo si no quedó registrado.
 -- CreateTable
 CREATE TABLE "pending_upload" (
     "id" UUID NOT NULL,
@@ -8,6 +8,7 @@ CREATE TABLE "pending_upload" (
     "user_id" UUID NOT NULL,
     "max_bytes" INTEGER NOT NULL,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "claimed_at" TIMESTAMPTZ,
 
     CONSTRAINT "pending_upload_pkey" PRIMARY KEY ("id")
 );

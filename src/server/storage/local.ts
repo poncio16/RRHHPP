@@ -1,9 +1,10 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { assertStorageKey, FileTooLargeError, type StorageDriver } from "./common";
+import { assertStorageKey, FileExistsError, FileTooLargeError, type StorageDriver } from "./common";
 
 /** Disco local (un volumen persistente de Docker). */
 export function localDriver(dir: string): StorageDriver {
@@ -16,10 +17,18 @@ export function localDriver(dir: string): StorageDriver {
     async put(key, data) {
       const target = resolve(key);
       await mkdir(path.dirname(target), { recursive: true });
-      // Se escribe a un temporal y se renombra: nunca queda un archivo a medias.
-      const temp = `${target}.partial`;
-      await writeFile(temp, data, { flag: "wx" });
-      await rename(temp, target);
+      // Se escribe a un temporal propio y se enlaza con el nombre final: nunca
+      // queda un archivo a medias y nunca se pisa uno que ya estaba (dos
+      // subidas a la vez de la misma clave: gana la primera).
+      const temp = `${target}.${randomUUID()}.partial`;
+      try {
+        await writeFile(temp, data, { flag: "wx" });
+        await link(temp, target).catch((error: NodeJS.ErrnoException) => {
+          throw error.code === "EEXIST" ? new FileExistsError(key) : error;
+        });
+      } finally {
+        await rm(temp, { force: true });
+      }
     },
     async open(key) {
       const target = resolve(key);

@@ -12,6 +12,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import { del, get, list, put } from "@vercel/blob";
 import pg from "pg";
 
@@ -200,23 +201,28 @@ type DockerOptions = { stdin?: string; stdout?: string };
  * devuelta, si no se indica archivo). Los errores no se muestran (pueden
  * traer datos): se devuelven para decidir qué informar.
  */
-export function docker(
+export async function docker(
   args: string[],
   options: DockerOptions = {},
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("docker", args, { stdio: [options.stdin ? "pipe" : "ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stderr!.on("data", (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(-4000);
-    });
-    if (options.stdout) child.stdout!.pipe(createWriteStream(options.stdout));
-    else child.stdout!.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-    if (options.stdin) createReadStream(options.stdin).pipe(child.stdin!);
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
+  const child = spawn("docker", args, { stdio: [options.stdin ? "pipe" : "ignore", "pipe", "pipe"] });
+  let stdout = "";
+  let stderr = "";
+  child.stderr!.on("data", (chunk: Buffer) => {
+    stderr = (stderr + chunk.toString()).slice(-4000);
   });
+  const output = options.stdout ? pipeline(child.stdout!, createWriteStream(options.stdout)) : null;
+  output?.catch(() => {}); // se espera más abajo
+  if (!options.stdout) child.stdout!.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+  // Si el proceso termina sin leer toda la entrada (pg_restore que corta en un
+  // error), escribirle falla: decide su código de salida.
+  if (options.stdin) pipeline(createReadStream(options.stdin), child.stdin!).catch(() => {});
+  const code = await new Promise<number>((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", (exit) => resolve(exit ?? 1));
+  });
+  await output;
+  return { code, stdout, stderr };
 }
 
 /** Un contenedor de PostgreSQL vacío y descartable, para restaurar un backup. */
@@ -239,7 +245,10 @@ export async function startScratchPostgres(major: number) {
   for (let i = 0; ; i++) {
     const ready = await docker(["exec", name, "pg_isready", "-q", "-h", "127.0.0.1", "-U", "postgres"]);
     if (ready.code === 0) break;
-    if (i >= 90) throw new StepError("PostgreSQL no arrancó en 90 segundos");
+    if (i >= 90) {
+      await docker(["rm", "-f", name]);
+      throw new StepError("PostgreSQL no arrancó en 90 segundos");
+    }
     await new Promise((r) => setTimeout(r, 1000));
   }
   return {
@@ -303,16 +312,15 @@ export async function dumpDatabase(url: string, major: number, target: string): 
       ],
       { stdout: target },
     );
-    // Los errores de pg_dump son de conexión o de permisos, sin datos de las tablas.
-    if (dump.code !== 0) throw new StepError(`pg_dump terminó con código ${dump.code}: ${lastLine(dump.stderr)}`);
+    // El detalle de pg_dump no se muestra: puede traer el servidor o el usuario de la base.
+    if (dump.code !== 0) throw new StepError(`pg_dump terminó con código ${dump.code}`);
   } finally {
     delete process.env.RRHH_DUMP_URL;
   }
-  const check = await docker(["run", "--rm", "-i", image, "pg_restore", "--list"], { stdin: target });
+  // Se lee entero (con --list alcanzaría el índice, que está al principio).
+  const check = await docker(["run", "--rm", "-i", image, "pg_restore", "--file=/dev/null"], { stdin: target });
   if (check.code !== 0) throw new StepError("el dump no se puede leer completo");
 }
-
-const lastLine = (text: string) => text.trim().split("\n").at(-1)?.slice(0, 300) ?? "";
 
 // ---------------------------------------------------------------------------
 // Registro para el aviso del inicio (tabla backup_run)
@@ -320,11 +328,16 @@ const lastLine = (text: string) => text.trim().split("\n").at(-1)?.slice(0, 300)
 
 export type RunKind = "BACKUP" | "PRUEBA_RESTAURACION";
 
+let recorded = false;
+
 /**
  * Registra el resultado en la base de la aplicación. Si no puede, lo avisa y
  * sigue: sin registros nuevos, el inicio muestra el backup como atrasado.
  */
 export async function recordRun(kind: RunKind, ok: boolean, name: string | null, detail: string | null) {
+  // Una vez por corrida: si la interrumpen mientras termina, vale lo primero.
+  if (recorded) return;
+  recorded = true;
   try {
     await query(
       requireEnv("DIRECT_URL"),
@@ -346,6 +359,22 @@ export async function recordRun(kind: RunKind, ok: boolean, name: string | null,
 export class StepError extends Error {}
 
 /**
+ * Muestra un error inesperado. En GitHub Actions, solo su tipo y su código: el
+ * repositorio y sus registros son públicos, y el mensaje de un error de
+ * conexión puede traer el servidor o el usuario de la base.
+ */
+export function logUnexpected(error: unknown) {
+  if (error instanceof StepError) return;
+  if (process.env.GITHUB_ACTIONS !== "true") {
+    console.error(error);
+    return;
+  }
+  const name = error instanceof Error ? error.name : typeof error;
+  const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+  console.error(`Tipo de error: ${name}${code ? ` (código ${code})` : ""}. El mensaje no se muestra en este registro.`);
+}
+
+/**
  * Lo que se está haciendo, para el motivo de un error: "Error al copiar la
  * base de datos." De un error inesperado se registra solo el paso, sin su
  * mensaje, que podría traer datos.
@@ -360,6 +389,27 @@ export class Steps {
     const base = `Error ${this.current}`;
     return error instanceof StepError ? `${base}: ${error.message}.` : `${base}.`;
   }
+  interrupted(): string {
+    return `Se interrumpió ${this.current}.`;
+  }
+}
+
+/**
+ * Si GitHub cancela la tarea o se le acaba el tiempo, manda SIGINT y después
+ * SIGTERM: se corre `cleanup` (registrar el resultado, parar el contenedor,
+ * borrar el temporal) y se termina.
+ */
+export function onInterrupt(cleanup: () => Promise<void>) {
+  let stopping = false;
+  const handler = (signal: NodeJS.Signals) => {
+    if (stopping) return;
+    stopping = true;
+    cleanup()
+      .catch(() => {})
+      .finally(() => process.exit(signal === "SIGINT" ? 130 : 143));
+  };
+  process.on("SIGINT", handler);
+  process.on("SIGTERM", handler);
 }
 
 /** Carpeta temporal del proceso (se borra al terminar). */

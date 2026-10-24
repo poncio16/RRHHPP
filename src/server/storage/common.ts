@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
  * validarlos antes de registrarlos.
  */
 export interface StorageDriver {
-  /** Guarda un archivo que llegó al servidor (la foto del legajo). */
+  /** Guarda un archivo que llegó al servidor. Si la clave ya existe, `FileExistsError`. */
   put(key: string, data: Uint8Array): Promise<void>;
   open(key: string): Promise<{ stream: ReadableStream<Uint8Array>; size: number }>;
   /** Lee completo un archivo subido directo por el navegador. `null` si nunca llegó. */
@@ -30,6 +30,13 @@ export type UploadTarget = { url: string; headers: Record<string, string> };
 export class FileTooLargeError extends Error {
   constructor(readonly maxBytes: number) {
     super(`El archivo supera ${maxBytes} bytes.`);
+  }
+}
+
+/** Ya hay un archivo con esa clave: nunca se pisa. */
+export class FileExistsError extends Error {
+  constructor(readonly key: string) {
+    super(`Ya hay un archivo con la clave ${key}.`);
   }
 }
 

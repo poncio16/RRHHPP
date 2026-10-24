@@ -95,13 +95,16 @@ jobs:
           DIRECT_URL: postgresql://rrhh:rrhh@localhost:5432/rrhh
           BACKUP_DIR: ${{ runner.temp }}/backups-nube
         run: |
+          export PGPASSWORD=rrhh
+          # Relleno para que el dump pase los 2 MB, como una base real: con uno
+          # chico no se ven los problemas de los procesos que lo leen a medias.
+          psql -h localhost -U rrhh -d rrhh -q -c "CREATE TABLE relleno_ci AS SELECT md5(random()::text) || md5(random()::text) AS x FROM generate_series(1, 100000)"
           npx tsx scripts/nube/backup.ts
           npx tsx scripts/nube/backup.ts
           npx tsx scripts/nube/restore-test.ts
           # Un dump alterado no pasa la prueba.
           echo x >>"$(ls -d "$BACKUP_DIR"/rrhh-* | tail -n 1)/base.dump"
           if npx tsx scripts/nube/restore-test.ts; then exit 1; fi
-          export PGPASSWORD=rrhh
           n="$(psql -h localhost -U rrhh -d rrhh -At -c "SELECT count(*) FROM stored_file")"
           if [ "$n" -lt 2 ]; then echo "Se esperaban adjuntos de las pruebas de punta a punta." >&2; exit 1; fi
           cat >esperados-nube.txt <<EOF

@@ -16,7 +16,7 @@ on:
         required: true
 
 concurrency:
-  group: backup-nube
+  group: restaurar-nube
   cancel-in-progress: false
 
 permissions:
@@ -26,12 +26,6 @@ jobs:
   restaurar:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
-    env:
-      RESTORE_DIRECT_URL: ${{ secrets.RESTORE_DIRECT_URL }}
-      APP_BLOB_TOKEN: ${{ secrets.APP_BLOB_TOKEN }}
-      BACKUP_BLOB_TOKEN: ${{ secrets.BACKUP_BLOB_TOKEN }}
-      RESTORE_CONFIRM: ${{ inputs.confirmar }}
 
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +38,12 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      # Los secretos van solo a este paso (no a `npm ci`).
       - name: Restaurar
         run: npx tsx scripts/nube/restore.ts "$BACKUP"
         env:
+          RESTORE_DIRECT_URL: ${{ secrets.RESTORE_DIRECT_URL }}
+          APP_BLOB_TOKEN: ${{ secrets.APP_BLOB_TOKEN }}
+          BACKUP_BLOB_TOKEN: ${{ secrets.BACKUP_BLOB_TOKEN }}
+          RESTORE_CONFIRM: ${{ inputs.confirmar }}
           BACKUP: ${{ inputs.backup }}

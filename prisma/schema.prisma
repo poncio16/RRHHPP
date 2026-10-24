@@ -961,15 +961,17 @@ model StoredFile {
 /// Archivo que el navegador sube directo al almacenamiento antes de guardar el
 /// formulario (así no pasa por el servidor de la aplicación, que en Vercel no
 /// acepta pedidos de más de 4,5 MB). La fila liga la clave al usuario que pidió
-/// la subida: al guardar el formulario se consume y el archivo pasa a ser un
-/// StoredFile. Las que nadie usó se descartan junto con su archivo, que nunca
-/// quedó asociado a ningún registro.
+/// la subida: al guardar el formulario se consume (`claimedAt`) y el archivo
+/// pasa a ser un StoredFile. La fila queda hasta que vence la subida: entonces
+/// se borra y, si su archivo no quedó en un StoredFile, también el archivo
+/// (incluso uno que haya llegado tarde).
 model PendingUpload {
-  id         String   @id @default(uuid(7)) @db.Uuid
-  storageKey String   @unique @map("storage_key")
-  userId     String   @map("user_id") @db.Uuid
-  maxBytes   Int      @map("max_bytes")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id         String    @id @default(uuid(7)) @db.Uuid
+  storageKey String    @unique @map("storage_key")
+  userId     String    @map("user_id") @db.Uuid
+  maxBytes   Int       @map("max_bytes")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  claimedAt  DateTime? @map("claimed_at") @db.Timestamptz
 
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 

@@ -28,8 +28,10 @@ on:
         description: "Para la prueba: el backup (rrhh-AAAAMMDDTHHMMSSZ). Vacío: el último."
         required: false
 
+# Un backup a la vez y una prueba a la vez (una prueba no espera a un backup).
+# Si ya hay una corrida esperando, GitHub cancela esa y deja la nueva.
 concurrency:
-  group: backup-nube
+  group: backup-nube-${{ github.event_name == 'workflow_dispatch' && inputs.tarea || (github.event.schedule == '30 7 * * 0' && 'prueba de restauración' || 'backup') }}
   cancel-in-progress: false
 
 permissions:
@@ -41,15 +43,16 @@ jobs:
     timeout-minutes: 60
 
     env:
-      DIRECT_URL: ${{ secrets.DIRECT_URL }}
-      APP_BLOB_TOKEN: ${{ secrets.APP_BLOB_TOKEN }}
-      BACKUP_BLOB_TOKEN: ${{ secrets.BACKUP_BLOB_TOKEN }}
-      BACKUP_RETENTION_DAYS: ${{ vars.BACKUP_RETENTION_DAYS }}
       TAREA: ${{ github.event_name == 'workflow_dispatch' && inputs.tarea || (github.event.schedule == '30 7 * * 0' && 'prueba de restauración' || 'backup') }}
 
+    # Los secretos van solo a los pasos que los usan (no a `npm ci`).
     steps:
       - name: Configuración
         id: config
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          APP_BLOB_TOKEN: ${{ secrets.APP_BLOB_TOKEN }}
+          BACKUP_BLOB_TOKEN: ${{ secrets.BACKUP_BLOB_TOKEN }}
         run: |
           missing=""
           for name in DIRECT_URL APP_BLOB_TOKEN BACKUP_BLOB_TOKEN; do
@@ -78,9 +81,16 @@ jobs:
       - name: Backup
         if: steps.config.outputs.listo == 'true' && env.TAREA == 'backup'
         run: npx tsx scripts/nube/backup.ts
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          APP_BLOB_TOKEN: ${{ secrets.APP_BLOB_TOKEN }}
+          BACKUP_BLOB_TOKEN: ${{ secrets.BACKUP_BLOB_TOKEN }}
+          BACKUP_RETENTION_DAYS: ${{ vars.BACKUP_RETENTION_DAYS }}
 
       - name: Prueba de restauración
         if: steps.config.outputs.listo == 'true' && env.TAREA == 'prueba de restauración'
         run: npx tsx scripts/nube/restore-test.ts "$BACKUP"
         env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          BACKUP_BLOB_TOKEN: ${{ secrets.BACKUP_BLOB_TOKEN }}
           BACKUP: ${{ inputs.backup }}

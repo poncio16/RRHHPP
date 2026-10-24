@@ -2,10 +2,17 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { assertStorageKey, FileTooLargeError, newStorageKey, readLimited } from "@/server/storage/common";
+import {
+  assertStorageKey,
+  FileExistsError,
+  FileTooLargeError,
+  newStorageKey,
+  readLimited,
+} from "@/server/storage/common";
 import { localDriver } from "@/server/storage/local";
 
 const blob = vi.hoisted(() => ({
+  BlobNotFoundError: class BlobNotFoundError extends Error {},
   put: vi.fn(),
   get: vi.fn(),
   del: vi.fn(),
@@ -84,6 +91,24 @@ describe("disco local", () => {
     await driver.discard(key);
     expect(await driver.read(key, 3)).toBeNull();
     await expect(driver.discard(key)).resolves.toBeUndefined();
+  });
+
+  it("no pisa un archivo que ya está", async () => {
+    const driver = localDriver(dir);
+    const key = newStorageKey();
+    await driver.put(key, new Uint8Array([1]));
+    await expect(driver.put(key, new Uint8Array([2]))).rejects.toBeInstanceOf(FileExistsError);
+    expect(Array.from((await driver.read(key, 1))!)).toEqual([1]);
+    const [year, month] = key.split("/");
+    expect(await readdir(path.join(dir, year!, month!))).toEqual([key.split("/")[2]]);
+    // Dos a la vez: solo una llega.
+    const other = newStorageKey();
+    const results = await Promise.allSettled([1, 2, 3].map((n) => driver.put(other, new Uint8Array([n]))));
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected").map((r) => r.reason)).toEqual([
+      expect.any(FileExistsError),
+      expect.any(FileExistsError),
+    ]);
   });
 
   it("rechaza lo que supera el máximo y las claves inválidas", async () => {
@@ -189,8 +214,12 @@ describe("Vercel Blob", () => {
     });
   });
 
-  it("descarta por clave", async () => {
+  it("descarta por clave, aunque nunca haya llegado", async () => {
     await vercelBlobDriver().discard(KEY);
     expect(blob.del).toHaveBeenCalledWith(KEY);
+    blob.del.mockRejectedValueOnce(new blob.BlobNotFoundError("no está"));
+    await expect(vercelBlobDriver().discard(KEY)).resolves.toBeUndefined();
+    blob.del.mockRejectedValueOnce(new Error("sin conexión"));
+    await expect(vercelBlobDriver().discard(KEY)).rejects.toThrow("sin conexión");
   });
 });

@@ -1,5 +1,5 @@
 import "server-only";
-import { del, get, issueSignedToken, parseStoreIdFromDelegationToken, presignUrl, put } from "@vercel/blob";
+import { BlobNotFoundError, del, get, issueSignedToken, parseStoreIdFromDelegationToken, presignUrl, put } from "@vercel/blob";
 import { assertStorageKey, readLimited, FileTooLargeError, type StorageDriver } from "./common";
 
 /**
@@ -39,7 +39,12 @@ export function vercelBlobDriver(): StorageDriver {
     },
     async discard(key) {
       assertStorageKey(key);
-      await del(key);
+      try {
+        await del(key);
+      } catch (error) {
+        // Si nunca llegó a subirse, no hay nada que borrar.
+        if (!(error instanceof BlobNotFoundError)) throw error;
+      }
     },
     /**
      * URL firmada para que el navegador suba ese archivo y solo ese, hasta el

@@ -24,6 +24,8 @@ import {
   backupStore,
   DUMP,
   FILES_PREFIX,
+  logUnexpected,
+  onInterrupt,
   plural,
   recordRun,
   removeTempDir,
@@ -45,6 +47,12 @@ async function main(): Promise<number> {
   let name = process.argv[2]?.trim() ?? "";
   let scratch: Awaited<ReturnType<typeof startScratchPostgres>> | undefined;
   const problems: string[] = [];
+  onInterrupt(async () => {
+    console.error(`Prueba de restauración FALLIDA: ${steps.interrupted()}`);
+    await recordRun("PRUEBA_RESTAURACION", false, name, steps.interrupted());
+    await scratch?.stop();
+    await removeTempDir();
+  });
   const fail = (problem: string) => {
     console.error(`ERROR: ${problem}.`);
     problems.push(problem);
@@ -141,7 +149,7 @@ async function main(): Promise<number> {
   } catch (error) {
     const reason = steps.reason(error);
     console.error(`Prueba de restauración FALLIDA: ${reason}`);
-    if (!(error instanceof StepError)) console.error(error);
+    logUnexpected(error);
     const detail =
       problems.length > 0
         ? `${plural(problems.length, "problema", "problemas")}: ${problems.join("; ")}. ${reason}`

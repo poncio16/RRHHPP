@@ -12,8 +12,8 @@ const UPLOAD_BODY_LIMIT = "21mb";
 const isDev = process.env.NODE_ENV === "development";
 const onVercel = process.env.VERCEL === "1";
 
-/** Con Vercel Blob, el navegador sube los adjuntos a la API de Vercel. */
-const UPLOAD_ORIGINS = process.env.STORAGE_DRIVER === "vercel-blob" ? " https://vercel.com" : "";
+/** Con Vercel Blob, el navegador sube los adjuntos a la API de Vercel (solo a esa ruta). */
+const UPLOAD_ORIGINS = process.env.STORAGE_DRIVER === "vercel-blob" ? " https://vercel.com/api/blob/" : "";
 
 /**
  * Política de contenido: todo sale del propio servidor (salvo las subidas a

@@ -130,8 +130,14 @@ export function DocumentDialog({
 
   const onFile = (selected: File | null) => {
     setFileError(undefined);
-    if (selected && selected.size > limits.maxFileSizeMb * 1024 * 1024) {
-      setFileError(`El archivo supera el máximo de ${limits.maxFileSizeMb} MB.`);
+    const problem =
+      selected && selected.size > limits.maxFileSizeMb * 1024 * 1024
+        ? `El archivo supera el máximo de ${limits.maxFileSizeMb} MB.`
+        : selected?.size === 0
+          ? "El archivo está vacío."
+          : undefined;
+    if (problem) {
+      setFileError(problem);
       setFile(null);
       setFileKey((k) => k + 1);
       return;
@@ -141,7 +147,10 @@ export function DocumentDialog({
 
   const submit = form.handleSubmit(() => {
     setFormError(undefined);
-    if (fileError) return;
+    // Un archivo rechazado al elegirlo hay que cambiarlo; si falló al subir o
+    // al guardar, se puede volver a intentar con el mismo.
+    if (fileError && !file) return;
+    setFileError(undefined);
     if (monthly && !form.getValues("period")) {
       form.setError("period", { message: `Indicá el mes al que corresponde "${type.name}".` });
       return;
@@ -384,8 +393,12 @@ async function uploadFile(file: File): Promise<{ ok: true; uploadId: string } | 
   try {
     const response = await fetch(url, { method: "PUT", headers, body: file });
     if (response.ok) return { ok: true, uploadId };
-    const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-    return { ok: false, message: body?.error?.message ?? UPLOAD_FAILED };
+    // Solo la propia aplicación explica el error en español; Vercel Blob, no.
+    if (!url.startsWith("/")) return { ok: false, message: UPLOAD_FAILED };
+    const body = (await response.json().catch(() => null)) as {
+      error?: { message?: string; fieldErrors?: { file?: string[] } };
+    } | null;
+    return { ok: false, message: body?.error?.fieldErrors?.file?.[0] ?? body?.error?.message ?? UPLOAD_FAILED };
   } catch {
     return { ok: false, message: UPLOAD_FAILED };
   }

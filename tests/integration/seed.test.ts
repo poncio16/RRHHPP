@@ -35,7 +35,10 @@ async function adminQuery(sql: string) {
 beforeAll(async () => {
   await adminQuery(`DROP DATABASE IF EXISTS "${cleanName}" WITH (FORCE)`);
   await adminQuery(`CREATE DATABASE "${cleanName}"`);
-  execSync("npx prisma migrate deploy", { stdio: "pipe", env: { ...process.env, DATABASE_URL: cleanUrl.href } });
+  execSync("npx prisma migrate deploy", {
+    stdio: "pipe",
+    env: { ...process.env, DATABASE_URL: cleanUrl.href, DIRECT_URL: cleanUrl.href },
+  });
   seedDb = new PrismaClient({ adapter: new PrismaPg({ connectionString: cleanUrl.href }) });
 }, 120_000);
 
