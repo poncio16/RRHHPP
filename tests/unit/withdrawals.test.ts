@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { entryKey, fingerprints, runningBalance } from "@/features/withdrawals/calc";
 import {
+  checkBalanceDates,
   findHeader,
   inferHeader,
   mapRow,
@@ -89,6 +90,35 @@ describe("filas de movimientos", () => {
     expect(negative.kind === "entry" && [negative.entry.credit, negative.entry.debit]).toEqual(["0.00", "385.00"]);
     const final = map([day("2015-03-16"), text(""), num(15098), num(15193), text("LIQUIDACION FINAL")]);
     expect(final.kind === "entry" && [final.entry.credit, final.entry.debit]).toEqual(["15098.00", "0.00"]);
+  });
+
+  it("un saldo con el año mal toma la fecha del concepto; un movimiento anterior al saldo queda afuera", () => {
+    const entry = (date: string, concept: string | null, opening = false, statedDate?: string) => ({
+      sheet: "Hoja",
+      rowNumber: 1,
+      date,
+      concept,
+      credit: "10.00",
+      debit: "0.00",
+      opening,
+      statedDate,
+    });
+    const balance = map([day("2017-12-30"), num(44), text(""), num(44), text("Saldo al 30-12-16")]);
+    expect(balance.kind === "entry" && balance.entry.statedDate).toBe("2016-12-30");
+    // Saldo con el año mal: manda el concepto.
+    const wrong = checkBalanceDates([
+      entry("2017-12-30", "Saldo al 30-12-16", true, "2016-12-30"),
+      entry("2017-01-01", null),
+    ]);
+    expect(wrong.kept.map((e) => e.date)).toEqual(["2016-12-30", "2017-01-01"]);
+    // Concepto con el año mal: manda la fecha de la fila, y el movimiento de 2002 queda afuera.
+    const typo = checkBalanceDates([
+      entry("2018-12-31", "Saldo al 31/12/2019", true, "2019-12-31"),
+      entry("2019-01-01", null),
+      entry("2002-09-03", null),
+    ]);
+    expect(typo.kept.map((e) => e.date)).toEqual(["2018-12-31", "2019-01-01"]);
+    expect(typo.early.map((e) => e.entry.date)).toEqual(["2002-09-03"]);
   });
 
   it("una fila sin fecha toma la de la fila anterior", () => {

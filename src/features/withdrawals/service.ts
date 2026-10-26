@@ -11,6 +11,7 @@ import { AppError, ConflictError, NotFoundError, ValidationError } from "@/serve
 import { entryKey, fingerprints, runningBalance } from "./calc";
 import { MAX_REPORTED_ERRORS, STATEMENT_PAGE_SIZE, WITHDRAWALS_MAX_BYTES } from "./constants";
 import {
+  checkBalanceDates,
   findHeader,
   inferHeader,
   mapRow,
@@ -389,21 +390,10 @@ async function readFile(file: File, today: Date) {
     }
     const entries: ParsedEntry[] = [];
     let previousDate: string | null = null;
-    // Fecha del último "Saldo al …" de la hoja: un movimiento anterior suele ser un año mal escrito.
-    let balanceDate: string | null = null;
     for (const row of sheet.rows.slice(header.index + 1)) {
       const result = mapRow(sheet.name, row, header.columns, today, previousDate);
       if (result.kind === "error") errors.push(result.error);
-      if (result.kind === "entry" && !result.entry.opening && balanceDate && result.entry.date < balanceDate) {
-        errors.push({
-          sheet: sheet.name,
-          rowNumber: row.rowNumber,
-          message: `La fecha ${formatDate(parseIsoDate(result.entry.date)!)} es anterior al saldo de la planilla del ${formatDate(
-            parseIsoDate(balanceDate)!,
-          )}: revisá el año.`,
-        });
-      } else if (result.kind === "entry") {
-        if (result.entry.opening) balanceDate = result.entry.date;
+      if (result.kind === "entry") {
         entries.push(result.entry);
         previousDate = result.entry.date;
       } else {
@@ -412,7 +402,17 @@ async function readFile(file: File, today: Date) {
         if (date && date <= today) previousDate = toIsoDate(date);
       }
     }
-    read.push({ name: sheet.name.trim(), key: sheetKey(sheet.name), entries });
+    const { kept, early } = checkBalanceDates(entries);
+    for (const { entry, balanceDate } of early) {
+      errors.push({
+        sheet: sheet.name,
+        rowNumber: entry.rowNumber,
+        message: `La fecha ${formatDate(parseIsoDate(entry.date)!)} es anterior al saldo de la planilla del ${formatDate(
+          parseIsoDate(balanceDate)!,
+        )}: revisá el año.`,
+      });
+    }
+    read.push({ name: sheet.name.trim(), key: sheetKey(sheet.name), entries: kept });
   }
   if (read.length === 0) {
     throw new ValidationError(

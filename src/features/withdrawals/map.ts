@@ -141,6 +141,41 @@ export function parseCellAmount(cell: Cell): bigint | null | "invalid" {
  * Filas
  * ------------------------------------------------------------------------- */
 
+/**
+ * Ordena los saldos de la planilla de una hoja y separa los movimientos con
+ * fecha anterior al último saldo, que suelen tener el año mal escrito.
+ *
+ * Si la fecha de un saldo es posterior a la del movimiento que lo sigue, la
+ * que está mal es la del saldo: se usa la del concepto si no pasa de ese
+ * movimiento. Si no, el saldo dejaría afuera todo el año.
+ */
+export function checkBalanceDates(entries: ParsedEntry[]) {
+  const kept: ParsedEntry[] = [];
+  const early: { entry: ParsedEntry; balanceDate: string }[] = [];
+  let balanceDate: string | null = null;
+  entries.forEach((entry, i) => {
+    if (entry.opening) {
+      const next = entries.slice(i + 1).find((e) => !e.opening);
+      const date =
+        next && entry.date > next.date && entry.statedDate && entry.statedDate <= next.date
+          ? entry.statedDate
+          : entry.date;
+      balanceDate = date;
+      kept.push({ ...entry, date });
+    } else if (balanceDate && entry.date < balanceDate) early.push({ entry, balanceDate });
+    else kept.push(entry);
+  });
+  return { kept, early };
+}
+
+/** Fecha escrita en el concepto, como en "Saldo al 30-12-16". */
+function conceptDate(concept: string, today: Date): Date | null {
+  const match = /\bal\s+(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})\b/i.exec(concept);
+  if (!match) return null;
+  const date = parseCellDate({ text: match[1]!.replace(/\./g, "/") });
+  return date && date <= today ? date : null;
+}
+
 export type ParsedEntry = {
   sheet: string;
   rowNumber: number;
@@ -152,6 +187,8 @@ export type ParsedEntry = {
   debit: string;
   /** Saldo que arrastra la planilla de años anteriores ("Saldo al 31/12/2018"). */
   opening: boolean;
+  /** En un saldo de la planilla, la fecha escrita en el concepto ("Saldo al 30-12-16"). */
+  statedDate?: string;
 };
 
 export type RowProblem = { sheet: string; rowNumber: number; message: string };
@@ -228,6 +265,7 @@ export function mapRow(
   }
 
   const concept = cellAt(row, columns.concepto).text.trim().slice(0, 200);
+  const opening = OPENING_ROW.test(normalizeKey(concept));
   return {
     kind: "entry",
     entry: {
@@ -235,7 +273,8 @@ export function mapRow(
       rowNumber: row.rowNumber,
       date: toIsoDate(date),
       concept: concept === "" ? null : concept,
-      opening: OPENING_ROW.test(normalizeKey(concept)),
+      opening,
+      ...(opening && { statedDate: toIsoDate(conceptDate(concept, today) ?? date) }),
       credit: fromCents(credit),
       debit: fromCents(debit),
     },
