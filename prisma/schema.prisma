@@ -201,6 +201,10 @@ model User {
   pendingUploads  PendingUpload[]
   importJobs      ImportJob[]
   alertDismissals AlertDismissal[]
+  accountEntries  AccountEntry[]          @relation("AccountEntryCreatedBy")
+  accountSheets   AccountSheet[]
+  voidedEntries   AccountEntry[]          @relation("AccountEntryVoidedBy")
+  accounts        Account[]
 
   @@index([roleId])
   @@map("user")
@@ -643,6 +647,7 @@ model Employee {
   documents        Document[]
   novelties        Novelty[]
   exits            EmployeeExit[]
+  accounts         Account[]
 
   @@index([status])
   @@index([departmentId])
@@ -1182,4 +1187,85 @@ model BackupRun {
 
   @@index([kind, finishedAt])
   @@map("backup_run")
+}
+
+enum AccountEntrySource {
+  MANUAL
+  IMPORTACION
+}
+
+/// Cuenta corriente de retiros de una persona. Se crea al importar una hoja con
+/// un nombre nuevo (un apodo, como "Richy"); el legajo se vincula si existe.
+model Account {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String
+  /// Nombre sin mayúsculas, acentos ni espacios repetidos.
+  key         String   @unique
+  /// Legajo de la persona, si está cargado. Un reingreso suele tener una hoja (y una cuenta) nueva.
+  employeeId  String?  @map("employee_id") @db.Uuid
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  employee  Employee?      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy User           @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  entries   AccountEntry[]
+  sheets    AccountSheet[]
+
+  @@index([employeeId])
+  @@map("account")
+}
+
+/// Movimiento de una cuenta corriente de retiros. El saldo no se guarda: es la
+/// suma de ingresos menos retiros en orden de fecha. No se borra: un
+/// movimiento equivocado se anula.
+model AccountEntry {
+  id          String             @id @default(uuid(7)) @db.Uuid
+  accountId   String             @map("account_id") @db.Uuid
+  date        DateTime           @db.Date
+  concept     String?
+  credit      Decimal            @default(0) @db.Decimal(14, 2)
+  debit       Decimal            @default(0) @db.Decimal(14, 2)
+  /// Saldo que trae la planilla ("Saldo al 31/12/2018"): no es un movimiento, fija el saldo
+  /// en ese punto (positivo en `credit`, negativo en `debit`).
+  isBalance   Boolean            @default(false) @map("is_balance")
+  /// Cuenta, fecha, importes y número de aparición (el segundo movimiento igual del
+  /// mismo día es "|2"): dos movimientos con la misma huella son el mismo (repetido).
+  fingerprint String             @unique
+  source      AccountEntrySource
+  /// Archivo, hoja y fila de origen de un movimiento importado.
+  fileName    String?            @map("file_name")
+  sheetName   String?            @map("sheet_name")
+  rowNumber   Int?               @map("row_number")
+  createdById String             @map("created_by_id") @db.Uuid
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  voidedAt    DateTime?          @map("voided_at") @db.Timestamptz
+  voidedById  String?            @map("voided_by_id") @db.Uuid
+  voidReason  String?            @map("void_reason")
+
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  createdBy User    @relation("AccountEntryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  voidedBy  User?   @relation("AccountEntryVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+
+  @@index([accountId, date])
+  @@map("account_entry")
+}
+
+/// Nombre de hoja de las planillas de retiros y la cuenta a la que va. Sin
+/// cuenta: la hoja no se importa.
+model AccountSheet {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  /// Nombre sin mayúsculas, acentos ni espacios repetidos.
+  key         String   @unique
+  name        String
+  accountId   String?  @map("account_id") @db.Uuid
+  updatedById String   @map("updated_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  updatedBy User     @relation(fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@index([accountId])
+  @@map("account_sheet")
 }

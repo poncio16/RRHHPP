@@ -15,6 +15,7 @@ import {
   Users,
   Wallet,
   ClipboardList,
+  ArrowLeftRight,
 } from "lucide-react";
 import type { Permission } from "@/server/authz/permissions";
 
@@ -51,6 +52,7 @@ export const navigation: NavGroup[] = [
     label: "Remuneraciones",
     items: [
       { label: "Información salarial", href: "/remuneraciones", icon: Wallet, permission: "salary:read" },
+      { label: "Retiros", href: "/retiros", icon: ArrowLeftRight, permission: "salary:read" },
       { label: "Novedades", href: "/novedades", icon: ClipboardList, permission: "novelty:read" },
     ],
   },
