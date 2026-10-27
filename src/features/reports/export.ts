@@ -1,6 +1,6 @@
 import "server-only";
 import { exportAuditLog } from "@/features/audit/service";
-import { exportEmployeeList } from "@/features/employees/service";
+import { exportEmployeeList, exportPayrollRoster } from "@/features/employees/service";
 import { exportLeaves, exportVacations } from "@/features/leaves/service";
 import { exportNovelties, exportNoveltySheet } from "@/features/novelties/service";
 import { toIsoDate, todayInTimeZone } from "@/lib/format";
@@ -16,6 +16,7 @@ import type { ReportResult } from "./table";
 /** Listados exportables además de los reportes; la clave no puede ser la de un reporte. */
 const LISTS = {
   empleados: { module: "empleados", run: exportEmployeeList },
+  "nomina-personal": { module: "empleados", run: exportPayrollRoster },
   licencias: { module: "licencias", run: exportLeaves },
   "listado-vacaciones": { module: "vacaciones", run: exportVacations },
   novedades: { module: "novedades", run: exportNovelties },

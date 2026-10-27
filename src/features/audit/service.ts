@@ -170,6 +170,7 @@ const LIST_SCREENS: Record<string, string> = {
   "listado-vacaciones": "/vacaciones",
   novedades: "/novedades",
   "planilla-novedades": "/novedades",
+  "nomina-personal": "/empleados",
   auditoria: "/auditoria",
 };
 

@@ -215,6 +215,24 @@ describe("importación: filas", () => {
   });
 });
 
+describe("importación: registro", () => {
+  const withRegistration = matchHeaders([...HEADERS, "Registro", "Fecha de alta en ARCA"]).positions;
+  const map = (registration: string, arca = "") => mapRow(2, [...row(), registration, arca], withRegistration, lookups);
+
+  it("sin la columna, el empleado queda con registro", () => {
+    expect(mapRow(2, row(), positions, lookups).input).toMatchObject({ registration: "CON_REGISTRO" });
+  });
+
+  it("acepta con o sin registro y la fecha de alta en ARCA", () => {
+    expect(map("Sin registro").input).toMatchObject({ registration: "SIN_REGISTRO" });
+    expect(map("con", "15/03/2020").input).toMatchObject({
+      registration: "CON_REGISTRO",
+      registeredSince: "2020-03-15",
+    });
+    expect(map("Tal vez").errors).toEqual(['Registro: usá "Con registro" o "Sin registro".']);
+  });
+});
+
 describe("importación: valores nuevos de Catálogos", () => {
   const admin: Lookups = { ...lookups, createsCatalogs: true };
   const ids = () => {

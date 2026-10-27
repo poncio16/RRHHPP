@@ -409,3 +409,97 @@ describe("foto del legajo", () => {
     expect(await stored()).toBe(files);
   });
 });
+
+describe("registro del empleado", () => {
+  it("al dar de alta sin fechas toma la de ingreso para el estado elegido", async () => {
+    const con = await employees.createEmployee(rrhh, validInput());
+    const sin = await employees.createEmployee(rrhh, validInput({ registration: "SIN_REGISTRO" }));
+    const a = await db.employee.findUniqueOrThrow({ where: { id: con.id } });
+    const b = await db.employee.findUniqueOrThrow({ where: { id: sin.id } });
+    expect(a.registration).toBe("CON_REGISTRO");
+    expect(toIsoDate(a.registeredSince!)).toBe("2020-03-01");
+    expect(a.unregisteredSince).toBeNull();
+    expect(b.registration).toBe("SIN_REGISTRO");
+    expect(toIsoDate(b.unregisteredSince!)).toBe("2020-03-01");
+    expect(b.registeredSince).toBeNull();
+  });
+
+  it("al pasar a con registro pide la fecha de alta en ARCA, conserva la de sin registro y audita", async () => {
+    const { id } = await employees.createEmployee(rrhh, validInput({ registration: "SIN_REGISTRO" }));
+    const view = await employees.getEmployee(rrhh, id);
+    const unregisteredSince = toIsoDate(view.registration.unregisteredSince!);
+
+    const missing = await appErrorOf(
+      employees.updateRegistration(rrhh, id, {
+        version: view.version,
+        registration: "CON_REGISTRO",
+        unregisteredSince,
+      }),
+    );
+    expect(missing).toMatchObject({ fieldErrors: { registeredSince: ["Ingresá la fecha de alta en ARCA."] } });
+
+    const before = await appErrorOf(
+      employees.updateRegistration(rrhh, id, {
+        version: view.version,
+        registration: "CON_REGISTRO",
+        registeredSince: "2019-01-01",
+        unregisteredSince,
+      }),
+    );
+    expect(before).toMatchObject({ fieldErrors: { unregisteredSince: expect.any(Array) } });
+
+    await employees.updateRegistration(rrhh, id, {
+      version: view.version,
+      registration: "CON_REGISTRO",
+      registeredSince: "2021-06-01",
+      unregisteredSince,
+    });
+    const after = await employees.getEmployee(rrhh, id);
+    expect(after.registration.status).toBe("CON_REGISTRO");
+    expect(toIsoDate(after.registration.registeredSince!)).toBe("2021-06-01");
+    expect(toIsoDate(after.registration.unregisteredSince!)).toBe("2020-03-01");
+    expect(after.version).toBe(view.version + 1);
+    expect(await lastAudit({ entityId: id })).toMatchObject({
+      action: "UPDATE",
+      before: { registration: "SIN_REGISTRO" },
+      after: { registration: "CON_REGISTRO", registeredSince: "2021-06-01T00:00:00.000Z" },
+    });
+
+    // Con la versión vieja, otra persona ya lo cambió.
+    const stale = await appErrorOf(
+      employees.updateRegistration(rrhh, id, { version: view.version, registration: "SIN_REGISTRO" }),
+    );
+    expect(stale).toBeInstanceOf(ConflictError);
+  });
+
+  it("Consulta no puede cambiar el registro", async () => {
+    const { id } = await employees.createEmployee(rrhh, validInput());
+    await expect(
+      employees.updateRegistration(consulta, id, { version: 1, registration: "SIN_REGISTRO" }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("la nómina de personal exporta solo a los empleados con registro", async () => {
+    const sector = await db.department.create({ data: { name: `Nómina ${tag}` } });
+    const con = await employees.createEmployee(
+      rrhh,
+      validInput({ departmentId: sector.id, lastName: "Registrado", registeredSince: "2020-04-01" }),
+    );
+    await employees.createEmployee(
+      rrhh,
+      validInput({ departmentId: sector.id, lastName: "Informal", registration: "SIN_REGISTRO" }),
+    );
+    const result = await employees.exportPayrollRoster(rrhh, { departmentId: sector.id, registro: "sin" });
+    const rows = result.tables[0]!.rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ legajo: con.fileNumber, nombre: `Registrado, Empleado ${tag}` });
+    expect(toIsoDate(rows[0]!.alta_arca as Date)).toBe("2020-04-01");
+    expect(result.tables[0]!.columns.map((c) => c.key)).toContain("cuil");
+
+    const limited = await employees.exportPayrollRoster(consulta, { departmentId: sector.id });
+    expect(limited.tables[0]!.columns.map((c) => c.key)).not.toContain("cuil");
+
+    const list = await employees.listEmployees(rrhh, { departmentId: sector.id, registro: "sin" });
+    expect(list.items.map((e) => e.lastName)).toEqual(["Informal"]);
+  });
+});

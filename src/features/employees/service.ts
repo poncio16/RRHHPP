@@ -12,7 +12,13 @@ import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { getSetting } from "@/server/settings";
 import { newStorageKey, storage, withStoredFile } from "@/server/storage";
 import { detectFileType } from "@/features/documents/files";
-import { HISTORIC_FIELD_NAMES, HISTORIC_FIELDS, STATUS_LABELS, type HistoricField } from "./constants";
+import {
+  HISTORIC_FIELD_NAMES,
+  HISTORIC_FIELDS,
+  REGISTRATION_LABELS,
+  STATUS_LABELS,
+  type HistoricField,
+} from "./constants";
 import * as repo from "./repository";
 import { EXPORT_MAX_ROWS, type Column, type ReportResult } from "@/features/reports/table";
 import { buildTimeline, TIMELINE_KIND_FILTER } from "./timeline";
@@ -21,6 +27,7 @@ import {
   changeMetaSchema,
   employeeListQuerySchema,
   employeeSchema,
+  registrationSchema,
   timelineQuerySchema,
   type EmployeeData,
 } from "./schemas";
@@ -72,6 +79,9 @@ export async function exportEmployeeList(ctx: ActorContext, rawQuery: unknown): 
         ]
       : []),
     { key: "estado", label: "Estado" },
+    { key: "registro", label: "Registro" },
+    { key: "alta_arca", label: "Alta en ARCA", type: "date" },
+    { key: "sin_registro", label: "Sin registro desde", type: "date" },
     { key: "sector", label: "Sector" },
     { key: "puesto", label: "Puesto" },
     { key: "categoria", label: "Categoría" },
@@ -80,11 +90,11 @@ export async function exportEmployeeList(ctx: ActorContext, rawQuery: unknown): 
     { key: "ingreso", label: "Ingreso", type: "date" },
     { key: "egreso", label: "Egreso", type: "date" },
   ];
-  const statusLabel = { activos: "Activos", suspendidos: "Suspendidos hoy", egresados: "Egresados", todos: "Todos" };
   return {
     title: "Empleados",
     filters: [
-      `Estado: ${statusLabel[query.status]}`,
+      `Estado: ${STATUS_FILTER_LABELS[query.status]}`,
+      ...(query.registro ? [`Registro: ${query.registro === "con" ? "Con registro" : "Sin registro"}`] : []),
       ...(query.q ? [`Búsqueda: ${query.q}`] : []),
       ...(rows.length === EXPORT_MAX_ROWS ? [`Se exportaron las primeras ${EXPORT_MAX_ROWS} filas.`] : []),
     ],
@@ -99,6 +109,9 @@ export async function exportEmployeeList(ctx: ActorContext, rawQuery: unknown): 
           nombre: e.firstName,
           ...(canSeePersonal ? { dni: e.dni, cuil: e.cuil } : {}),
           estado: e.leaveRecords.length > 0 ? "Suspendido" : STATUS_LABELS[e.status],
+          registro: REGISTRATION_LABELS[e.registration],
+          alta_arca: e.registeredSince,
+          sin_registro: e.unregisteredSince,
           sector: e.department.name,
           puesto: e.position.name,
           categoria: e.category?.name ?? null,
@@ -108,6 +121,71 @@ export async function exportEmployeeList(ctx: ActorContext, rawQuery: unknown): 
           egreso: e.exitDate,
         })),
         empty: "No hay empleados con estos filtros.",
+      },
+    ],
+  };
+}
+
+const STATUS_FILTER_LABELS = {
+  activos: "Activos",
+  suspendidos: "Suspendidos hoy",
+  egresados: "Egresados",
+  todos: "Todos",
+};
+
+/**
+ * Nómina de personal: solo los empleados con registro (dados de alta en
+ * ARCA), con los demás filtros de la pantalla. El CUIL sale solo con permiso
+ * de datos personales.
+ */
+export async function exportPayrollRoster(ctx: ActorContext, rawQuery: unknown): Promise<ReportResult> {
+  await assertPermission(ctx, "employee:read", MODULE);
+  const query = { ...employeeListQuerySchema.parse(rawQuery), registro: "con" as const };
+  const canSeePersonal = hasPermission(ctx, "employee.personal:read");
+  const rows = await repo.listEmployeesForExport(query, canSeePersonal, todayInTimeZone(), EXPORT_MAX_ROWS);
+  const columns: Column[] = [
+    { key: "legajo", label: "Legajo", type: "int" },
+    { key: "nombre", label: "Apellido y nombre" },
+    ...(canSeePersonal ? [{ key: "cuil", label: "CUIL" }] : []),
+    { key: "alta_arca", label: "Fecha de alta en ARCA", type: "date" },
+    { key: "ingreso", label: "Fecha de ingreso", type: "date" },
+    ...(query.status === "activos" ? [] : [{ key: "egreso", label: "Fecha de egreso", type: "date" as const }]),
+    { key: "sector", label: "Sector" },
+    { key: "puesto", label: "Puesto" },
+    { key: "convenio", label: "Convenio" },
+    { key: "categoria", label: "Categoría" },
+    { key: "contratacion", label: "Contratación" },
+    { key: "jornada", label: "Jornada" },
+    { key: "establecimiento", label: "Establecimiento" },
+  ];
+  return {
+    title: "Nómina de personal",
+    filters: [
+      `Estado: ${STATUS_FILTER_LABELS[query.status]}`,
+      ...(query.q ? [`Búsqueda: ${query.q}`] : []),
+      ...(rows.length === EXPORT_MAX_ROWS ? [`Se exportaron las primeras ${EXPORT_MAX_ROWS} filas.`] : []),
+    ],
+    tables: [
+      {
+        id: "nomina",
+        title: "Personal con registro",
+        columns,
+        rows: rows.map((e) => ({
+          legajo: e.fileNumber,
+          nombre: `${e.lastName}, ${e.firstName}`,
+          ...(canSeePersonal ? { cuil: e.cuil } : {}),
+          alta_arca: e.registeredSince,
+          ingreso: e.hireDate,
+          ...(query.status === "activos" ? {} : { egreso: e.exitDate }),
+          sector: e.department.name,
+          puesto: e.position.name,
+          convenio: e.agreement?.name ?? null,
+          categoria: e.category?.name ?? null,
+          contratacion: e.contractType.name,
+          jornada: e.workdayType?.name ?? null,
+          establecimiento: e.workplace.name,
+        })),
+        empty: "No hay empleados con registro con estos filtros.",
       },
     ],
   };
@@ -140,6 +218,11 @@ export async function getEmployee(ctx: ActorContext, id: string) {
     firstName: employee.firstName,
     status: employee.status,
     version: employee.version,
+    registration: {
+      status: employee.registration,
+      registeredSince: employee.registeredSince,
+      unregisteredSince: employee.unregisteredSince,
+    },
     labor: {
       hireDate: employee.hireDate,
       seniorityDate: employee.seniorityDate,
@@ -220,10 +303,16 @@ function toFormValues(e: repo.EmployeeDetailRecord) {
     supervisorId: e.supervisorId ?? "",
     healthInsurerId: e.healthInsurerId ?? "",
     artProviderId: e.artProviderId ?? "",
+    registration: e.registration,
+    registeredSince: d(e.registeredSince),
+    unregisteredSince: d(e.unregisteredSince),
   };
 }
 
-export type EmployeeFormValues = Omit<ReturnType<typeof toFormValues>, "sex"> & { sex: string };
+export type EmployeeFormValues = Omit<ReturnType<typeof toFormValues>, "sex" | "registration"> & {
+  sex: string;
+  registration: string;
+};
 
 /** Opciones de los selectores del formulario (activas más las ya asignadas). */
 export async function getEmployeeFormOptions(ctx: ActorContext, assignedIds: string[] = []) {
@@ -366,6 +455,19 @@ function toRecord(data: EmployeeData) {
     hireDate: date(data.hireDate),
     seniorityDate: date(data.seniorityDate ?? data.hireDate),
     contractEndDate: data.contractEndDate ? date(data.contractEndDate) : null,
+    ...registrationDates(data, date(data.hireDate)),
+  };
+}
+
+/** Fechas de registro: la del estado elegido, si quedó vacía, es la de ingreso. */
+function registrationDates(
+  data: Pick<EmployeeData, "registration" | "registeredSince" | "unregisteredSince">,
+  hireDate: Date,
+) {
+  const date = (v: string | null) => (v ? parseIsoDate(v)! : null);
+  return {
+    registeredSince: date(data.registeredSince) ?? (data.registration === "CON_REGISTRO" ? hireDate : null),
+    unregisteredSince: date(data.unregisteredSince) ?? (data.registration === "SIN_REGISTRO" ? hireDate : null),
   };
 }
 
@@ -717,6 +819,48 @@ export async function updateEmployee(ctx: ActorContext, id: string, input: unkno
         entityId: id,
         ...diff,
         message: `Modificación de legajo ${updated.fileNumber}: ${updated.lastName}, ${updated.firstName}`,
+      },
+      tx,
+    );
+  });
+}
+
+/**
+ * Cambio de registro desde el encabezado del legajo: con o sin registro y sus
+ * fechas. Alcanza con poder editar legajos (no muestra datos personales).
+ */
+export async function updateRegistration(ctx: ActorContext, id: string, input: unknown) {
+  await assertPermission(ctx, "employee:write", MODULE);
+  const data = registrationSchema.parse(input);
+  await repo.transaction(async (tx) => {
+    const current = await repo.findEmployee(id, tx);
+    if (!current) throw new NotFoundError("El legajo no existe.");
+    if (current.version !== data.version) throw staleError();
+    const next = { registration: data.registration, ...registrationDates(data, current.hireDate) };
+    for (const field of ["registeredSince", "unregisteredSince"] as const) {
+      const value = next[field];
+      if (value && value <= current.birthDate) {
+        throw new ValidationError(undefined, { [field]: ["Tiene que ser posterior al nacimiento."] });
+      }
+    }
+    const before = {
+      registration: current.registration,
+      registeredSince: current.registeredSince,
+      unregisteredSince: current.unregisteredSince,
+    };
+    const diff = auditDiff(before, next);
+    if (!diff) return;
+    const updated = await repo.updateEmployeeVersioned(id, data.version, { ...next, updatedById: ctx.userId }, tx);
+    if (!updated) throw staleError();
+    await recordAudit(
+      ctx,
+      {
+        action: "UPDATE",
+        module: MODULE,
+        entityType: "Employee",
+        entityId: id,
+        ...diff,
+        message: `Registro del legajo ${updated.fileNumber}: ${REGISTRATION_LABELS[updated.registration].toLowerCase()}`,
       },
       tx,
     );

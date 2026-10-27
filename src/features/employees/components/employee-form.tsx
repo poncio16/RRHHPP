@@ -16,6 +16,7 @@ import { Select } from "@/components/ui/select";
 import { cuilMatchesDni, isValidCuil, isValidDni } from "@/lib/validators";
 import { createEmployeeAction, updateEmployeeAction } from "../actions";
 import { HISTORIC_FIELD_NAMES, HISTORIC_FIELDS, SEX_OPTIONS } from "../constants";
+import { RegistrationFields } from "./registration-fields";
 import { employeeSchema } from "../schemas";
 import type { EmployeeFormOptions, EmployeeFormValues } from "../service";
 
@@ -55,6 +56,9 @@ const EMPTY: EmployeeFormValues = {
   supervisorId: "",
   healthInsurerId: "",
   artProviderId: "",
+  registration: "CON_REGISTRO",
+  registeredSince: "",
+  unregisteredSince: "",
 };
 
 /** Alta (sin `employee`) o edición del legajo. */
@@ -253,6 +257,23 @@ export function EmployeeForm({
         {select("supervisorId", "Superior directo", supervisors)}
         {select("healthInsurerId", "Obra social", options.healthInsurers)}
         {select("artProviderId", "ART", options.artProviders)}
+        <div className="sm:col-span-2 lg:col-span-3">
+          <RegistrationFields
+            idPrefix="form-registro"
+            value={watched.registration}
+            register={{
+              registration: form.register("registration"),
+              registeredSince: form.register("registeredSince"),
+              unregisteredSince: form.register("unregisteredSince"),
+            }}
+            errors={{
+              registration: error("registration"),
+              registeredSince: error("registeredSince"),
+              unregisteredSince: error("unregisteredSince"),
+            }}
+            emptyHint="Vacía: la de ingreso."
+          />
+        </div>
       </Section>
 
       {historicChanges.length > 0 && (

@@ -2,7 +2,7 @@ import { parseIsoDate, todayInTimeZone } from "@/lib/format";
 import { baseListQuerySchema } from "@/lib/list/query";
 import { isValidCbu, isValidCuil, isValidDni, normalizeCbu, normalizeCuil, normalizeDni } from "@/lib/validators";
 import { z } from "@/lib/zod";
-import { SEX_OPTIONS } from "./constants";
+import { REGISTRATION_OPTIONS, SEX_OPTIONS, type RegistrationValue } from "./constants";
 
 /*
  * Los esquemas aceptan su propia salida: el formulario valida en el cliente y
@@ -42,6 +42,52 @@ const optionalIsoDate = z.preprocess(
 );
 
 const date = (v: string) => parseIsoDate(v)!;
+
+/*
+ * Registro del empleado. Las dos fechas son opcionales: vacía, la del estado
+ * elegido toma la fecha de ingreso (el servicio la completa). La de "sin
+ * registro" se conserva al pasar a con registro.
+ */
+const registrationFields = {
+  registration: z.preprocess(
+    (v) => (v === "" || v === undefined || v === null ? "CON_REGISTRO" : v),
+    z.enum(
+      REGISTRATION_OPTIONS.map((o) => o.value) as [RegistrationValue, ...RegistrationValue[]],
+      "Elegí una opción.",
+    ),
+  ),
+  registeredSince: optionalIsoDate,
+  unregisteredSince: optionalIsoDate,
+};
+
+type RegistrationShape = {
+  registration: RegistrationValue;
+  registeredSince: string | null;
+  unregisteredSince: string | null;
+};
+
+/** Con registro después de un período sin registro: el alta en ARCA va después. */
+function checkRegistration(v: RegistrationShape, ctx: z.RefinementCtx) {
+  // Al pasar de un estado al otro, la fecha del nuevo no puede ser la de ingreso.
+  if (v.registration === "CON_REGISTRO" && !v.registeredSince && v.unregisteredSince) {
+    ctx.addIssue({ code: "custom", path: ["registeredSince"], message: "Ingresá la fecha de alta en ARCA." });
+  }
+  if (v.registration === "SIN_REGISTRO" && !v.unregisteredSince && v.registeredSince) {
+    ctx.addIssue({ code: "custom", path: ["unregisteredSince"], message: "Ingresá desde cuándo está sin registro." });
+  }
+  if (
+    v.registration === "CON_REGISTRO" &&
+    v.registeredSince &&
+    v.unregisteredSince &&
+    date(v.unregisteredSince) > date(v.registeredSince)
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["unregisteredSince"],
+      message: "El período sin registro tiene que empezar antes del alta en ARCA.",
+    });
+  }
+}
 
 export const employeeSchema = z
   .object({
@@ -101,8 +147,10 @@ export const employeeSchema = z
     supervisorId: optionalId,
     healthInsurerId: optionalId,
     artProviderId: optionalId,
+    ...registrationFields,
   })
   .superRefine((v, ctx) => {
+    checkRegistration(v, ctx);
     const today = todayInTimeZone();
     const birth = parseIsoDate(v.birthDate);
     const hire = parseIsoDate(v.hireDate);
@@ -130,10 +178,23 @@ export const employeeSchema = z
         message: "La antigüedad reconocida tiene que ser posterior al nacimiento.",
       });
     }
+    for (const field of ["registeredSince", "unregisteredSince"] as const) {
+      const value = v[field];
+      if (birth && value && date(value) <= birth) {
+        ctx.addIssue({ code: "custom", path: [field], message: "Tiene que ser posterior al nacimiento." });
+      }
+    }
   });
 
 export type EmployeeInput = z.input<typeof employeeSchema>;
 export type EmployeeData = z.output<typeof employeeSchema>;
+
+/** Cambio de registro desde el encabezado del legajo. */
+export const registrationFormSchema = z.object(registrationFields).superRefine(checkRegistration);
+export const registrationSchema = z
+  .object({ version: z.coerce.number().int().positive(), ...registrationFields })
+  .superRefine(checkRegistration);
+export type RegistrationInput = z.input<typeof registrationSchema>;
 
 /** Datos del cambio que acompañan una edición de campos con historial. */
 export const changeMetaSchema = z.object({
@@ -179,6 +240,7 @@ export const employeeListQuerySchema = baseListQuerySchema.extend({
   status: z.enum(["activos", "suspendidos", "egresados", "todos"]).catch("activos").default("activos"),
   departmentId: z.uuid().optional().catch(undefined),
   workplaceId: z.uuid().optional().catch(undefined),
+  registro: z.enum(["con", "sin"]).optional().catch(undefined),
   sort: z.enum(["apellido", "legajo", "ingreso"]).catch("apellido").default("apellido"),
 });
 export type EmployeeListQuery = z.output<typeof employeeListQuerySchema>;

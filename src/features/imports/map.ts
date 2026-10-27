@@ -115,6 +115,12 @@ function convert(column: ImportColumn, raw: string, lookups: Lookups): { value: 
       ? { value: letter }
       : { value: null, error: `${column.header}: usá F, M o X.` };
   }
+  if (kind === "registration") {
+    const key = normalizeKey(raw);
+    if (key.startsWith("con") || key === "si") return { value: "CON_REGISTRO" };
+    if (key.startsWith("sin") || key === "no") return { value: "SIN_REGISTRO" };
+    return { value: null, error: `${column.header}: usá "Con registro" o "Sin registro".` };
+  }
   if (kind === "supervisor") {
     const id = lookups.supervisors.get(Number(raw.replace(/\./g, "")));
     return id
