@@ -36,6 +36,7 @@ const listSelect = {
   dni: true,
   hireDate: true,
   status: true,
+  registration: true,
   department: { select: { name: true } },
   position: { select: { name: true } },
   workplace: { select: { name: true } },
@@ -85,6 +86,7 @@ async function listWhere(query: EmployeeListQuery, searchPersonal: boolean, toda
           : {}),
     ...(query.departmentId ? { departmentId: query.departmentId } : {}),
     ...(query.workplaceId ? { workplaceId: query.workplaceId } : {}),
+    ...(query.registro ? { registration: query.registro === "con" ? "CON_REGISTRO" : "SIN_REGISTRO" } : {}),
     ...(or.length > 0 ? { OR: or } : {}),
   };
   return where;
@@ -129,8 +131,12 @@ export async function listEmployeesForExport(
       ...listSelect,
       cuil: true,
       exitDate: true,
+      registeredSince: true,
+      unregisteredSince: true,
       category: { select: { name: true } },
+      agreement: { select: { name: true } },
       contractType: { select: { name: true } },
+      workdayType: { select: { name: true } },
       leaveRecords: { where: suspendedOn(today), select: { endDate: true }, take: 1 },
     },
     orderBy: listOrder(query),

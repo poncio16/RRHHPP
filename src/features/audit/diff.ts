@@ -2,7 +2,7 @@ import { ALERT_KIND_LABELS } from "@/features/alerts/constants";
 import { CATALOGS, type CatalogField } from "@/features/catalogs/definitions";
 import { ATTENDANCE_STATUS_LABELS } from "@/features/attendance/constants";
 import { DOCUMENT_STATUS_LABELS } from "@/features/documents/constants";
-import { SEX_OPTIONS, STATUS_LABELS } from "@/features/employees/constants";
+import { REGISTRATION_LABELS, SEX_OPTIONS, STATUS_LABELS } from "@/features/employees/constants";
 import { EXIT_STATUS_LABELS } from "@/features/exits/constants";
 import { JOB_STATUS } from "@/features/imports/constants";
 import {
@@ -95,12 +95,14 @@ const LIST_TITLES: Record<string, string> = {
   "listado-vacaciones": "Vacaciones",
   novedades: "Novedades",
   "planilla-novedades": "Planilla de novedades",
+  "nomina-personal": "Nómina de personal",
   auditoria: "Auditoría",
 };
 
 /** Códigos fijos de otros campos, iguales en todos los registros. */
 const VALUE_LABELS: Record<string, Record<string, string>> = {
   sex: labelMap(SEX_OPTIONS),
+  registration: REGISTRATION_LABELS,
   employeeStatus: STATUS_LABELS,
   sourceType: NOVELTY_SOURCE_LABELS,
   formato: { csv: "CSV", xlsx: "Excel" },
@@ -162,6 +164,8 @@ const FILTER_VALUES: Record<string, (value: string) => string | undefined> = {
   class: (v) => own(LEAVE_CLASS_FILTER_LABELS, v),
   timing: (v) => own(LEAVE_TIMING_FILTER_LABELS, v),
   certificado: (v) => (v === "falta" ? "Falta el certificado" : undefined),
+  // En Empleados; en Auditoría `registro` es un id y queda tal cual.
+  registro: (v) => own({ con: "Con registro", sin: "Sin registro" }, v),
 };
 
 /** Filtros que pueden ser un mes ("2026-03"): el período de un listado o los extremos de Altas y bajas. */

@@ -3,7 +3,7 @@ import { Alert } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "@/lib/format";
 import { formatCuil } from "@/lib/validators";
-import { SEX_OPTIONS } from "../constants";
+import { REGISTRATION_LABELS, SEX_OPTIONS } from "../constants";
 import type { EmployeeView } from "../service";
 
 const name = (v: { name: string } | null | undefined) => v?.name ?? null;
@@ -46,6 +46,11 @@ export function EmployeeDetails({ employee }: { employee: EmployeeView }) {
       <Section title="Datos laborales">
         <Item label="Fecha de ingreso" value={formatDate(labor.hireDate)} />
         <Item label="Antigüedad reconocida desde" value={formatDate(labor.seniorityDate)} />
+        <Item label="Registro" value={REGISTRATION_LABELS[employee.registration.status]} />
+        <Item label="Fecha de alta en ARCA" value={formatDate(employee.registration.registeredSince)} />
+        {employee.registration.unregisteredSince && (
+          <Item label="Sin registro desde" value={formatDate(employee.registration.unregisteredSince)} />
+        )}
         <Item label="Tipo de contrato" value={labor.contractType.name} />
         {labor.contractEndDate && <Item label="Fin de contrato" value={formatDate(labor.contractEndDate)} />}
         {labor.exitDate && <Item label="Fecha de egreso" value={formatDate(labor.exitDate)} />}

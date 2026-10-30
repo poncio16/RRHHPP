@@ -27,7 +27,7 @@ export type ImportColumn = {
   field: string;
   header: string;
   required: boolean;
-  kind: "text" | "date" | "number" | "sex" | "supervisor" | { lookup: LookupKey };
+  kind: "text" | "date" | "number" | "sex" | "registration" | "supervisor" | { lookup: LookupKey };
   help: string;
 };
 
@@ -87,6 +87,27 @@ export const IMPORT_COLUMNS: ImportColumn[] = [
     required: false,
     kind: "date",
     help: "dd/mm/aaaa. Obligatorio si el tipo de contratación lo exige.",
+  },
+  {
+    field: "registration",
+    header: "Registro",
+    required: false,
+    kind: "registration",
+    help: "Con registro o Sin registro. Vacío: con registro.",
+  },
+  {
+    field: "registeredSince",
+    header: "Fecha de alta en ARCA",
+    required: false,
+    kind: "date",
+    help: "dd/mm/aaaa. Vacío: la de ingreso, si tiene registro.",
+  },
+  {
+    field: "unregisteredSince",
+    header: "Sin registro desde",
+    required: false,
+    kind: "date",
+    help: "dd/mm/aaaa. Vacío: la de ingreso, si no tiene registro.",
   },
   {
     field: "departmentId",

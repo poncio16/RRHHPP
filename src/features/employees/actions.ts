@@ -18,6 +18,12 @@ export async function updateEmployeeAction(employeeId: string, input: unknown) {
   );
 }
 
+export async function updateRegistrationAction(employeeId: string, input: unknown) {
+  return runAction(async () =>
+    service.updateRegistration(await requireActionContext("employee:write", MODULE), id.parse(employeeId), input),
+  );
+}
+
 export async function saveBankAccountAction(employeeId: string, input: unknown) {
   return runAction(async () =>
     service.saveBankAccount(await requireActionContext("employee:write", MODULE), id.parse(employeeId), input),

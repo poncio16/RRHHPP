@@ -9,6 +9,17 @@ export type SexValue = (typeof SEX_OPTIONS)[number]["value"];
 
 export const STATUS_LABELS = { ACTIVO: "Activo", EGRESADO: "Egresado" } as const;
 
+/** Registro del empleado: con registro es estar dado de alta en ARCA. */
+export const REGISTRATION_OPTIONS = [
+  { value: "CON_REGISTRO", label: "Con registro" },
+  { value: "SIN_REGISTRO", label: "Sin registro" },
+] as const;
+export type RegistrationValue = (typeof REGISTRATION_OPTIONS)[number]["value"];
+export const REGISTRATION_LABELS: Record<RegistrationValue, string> = {
+  CON_REGISTRO: "Con registro",
+  SIN_REGISTRO: "Sin registro",
+};
+
 /**
  * Campos que generan historial laboral al cambiar, con su tipo de cambio y
  * su etiqueta. Al editarlos se pide fecha efectiva y observaciones.

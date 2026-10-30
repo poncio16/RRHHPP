@@ -16,12 +16,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { STATUS_LABELS } from "@/features/employees/constants";
 import { getEmployeeListFilters, listEmployees } from "@/features/employees/service";
 import { ExportButtons } from "@/features/reports/components/export-buttons";
+import { DownloadLink } from "@/features/reports/components/report-table";
 import { formatDate } from "@/lib/format";
 import { flattenSearchParams } from "@/lib/list/query";
 import { hasPermission } from "@/server/authz";
 import { requirePageAccess } from "@/server/auth/request";
 
 export const metadata: Metadata = { title: "Empleados" };
+
+/** La nómina de personal toma los filtros de la pantalla y siempre solo los empleados con registro. */
+function rosterHref(params: Record<string, string>) {
+  const query = new URLSearchParams(params);
+  for (const key of ["page", "pageSize", "registro"]) query.delete(key);
+  query.set("formato", "xlsx");
+  return `/api/exportar/nomina-personal?${query.toString()}`;
+}
 
 type Props = PageProps<"/empleados">;
 
@@ -41,7 +50,7 @@ async function EmployeesContent({ searchParams }: Pick<Props, "searchParams">) {
   const [result, filters] = await Promise.all([listEmployees(ctx, params), getEmployeeListFilters(ctx)]);
   const canSeePersonal = hasPermission(ctx, "employee.personal:read");
   const canCreate = hasPermission(ctx, "employee:write") && canSeePersonal;
-  const filtered = !!(result.query.q || result.query.departmentId || result.query.workplaceId);
+  const filtered = !!(result.query.q || result.query.departmentId || result.query.workplaceId || result.query.registro);
 
   return (
     <>
@@ -50,7 +59,12 @@ async function EmployeesContent({ searchParams }: Pick<Props, "searchParams">) {
         description="Legajos del personal: datos personales, laborales e historial."
         actions={
           <>
-            {hasPermission(ctx, "export:run") && <ExportButtons resource="empleados" params={params} />}
+            {hasPermission(ctx, "export:run") && (
+              <>
+                <ExportButtons resource="empleados" params={params} />
+                <DownloadLink href={rosterHref(params)} label="Nómina de personal" />
+              </>
+            )}
             {canCreate && (
               <Link href="/empleados/nuevo" className={buttonVariants()}>
                 <Plus /> Nuevo empleado
@@ -90,6 +104,15 @@ async function EmployeesContent({ searchParams }: Pick<Props, "searchParams">) {
               options={[
                 { value: "", label: "Todos los establecimientos" },
                 ...filters.workplaces.map((o) => ({ value: o.id, label: o.label })),
+              ]}
+            />
+            <FilterSelect
+              name="registro"
+              label="Registro"
+              options={[
+                { value: "", label: "Con y sin registro" },
+                { value: "con", label: "Con registro" },
+                { value: "sin", label: "Sin registro" },
               ]}
             />
             <FilterSelect
@@ -141,6 +164,11 @@ async function EmployeesContent({ searchParams }: Pick<Props, "searchParams">) {
                     {e.suspendedUntil && result.query.status === "activos" && (
                       <Badge variant="warning" className="ml-2">
                         Suspendido
+                      </Badge>
+                    )}
+                    {e.registration === "SIN_REGISTRO" && (
+                      <Badge variant="warning" className="ml-2">
+                        Sin registro
                       </Badge>
                     )}
                     <span className="text-muted-foreground block text-xs sm:hidden">{e.department.name}</span>

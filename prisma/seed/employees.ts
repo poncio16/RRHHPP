@@ -472,6 +472,10 @@ export async function seedEmployees(db: PrismaClient): Promise<number> {
         email: `${s.first}.${s.last}`.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().concat("@correo-demo.com.ar"),
         hireDate: hire,
         seniorityDate: hire,
+        // Algunos legajos de muestra sin registro, para ver la marca y la nómina.
+        ...(s.file % 17 === 0
+          ? { registration: "SIN_REGISTRO" as const, unregisteredSince: hire }
+          : { registration: "CON_REGISTRO" as const, registeredSince: hire }),
         contractEndDate:
           contract === "Plazo fijo"
             ? new Date(Date.UTC(hire.getUTCFullYear() + 1, hire.getUTCMonth(), hire.getUTCDate() - 1))

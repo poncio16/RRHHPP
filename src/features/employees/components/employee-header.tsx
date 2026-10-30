@@ -9,10 +9,11 @@ import { formatSeniority, seniority } from "../calc";
 import { STATUS_LABELS } from "../constants";
 import type { EmployeeView } from "../service";
 import { EmployeePhoto } from "./employee-photo";
+import { RegistrationBadge } from "./registration-dialog";
 
 export type EmployeePageAccess = {
   canEdit: boolean;
-  /** Cargar o cambiar la foto (alcanza con editar legajos; no muestra datos personales). */
+  /** Cargar o cambiar la foto o el registro (alcanza con editar legajos; no muestra datos personales). */
   canChangePhoto: boolean;
   canSeeBank: boolean;
   canSeeDocuments: boolean;
@@ -104,6 +105,12 @@ export function EmployeeHeader({
               ) : (
                 <Badge variant={active ? "success" : "muted"}>{STATUS_LABELS[employee.status]}</Badge>
               )}
+              <RegistrationBadge
+                employeeId={employee.id}
+                version={employee.version}
+                registration={employee.registration}
+                canEdit={canChangePhoto}
+              />
               {pendingExit && (
                 <Link href={`${base}/historial`}>
                   <Badge variant="warning">Egreso en trámite: {formatDate(pendingExit.exitDate)}</Badge>

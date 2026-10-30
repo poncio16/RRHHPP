@@ -26,6 +26,12 @@ enum EmployeeStatus {
   EGRESADO
 }
 
+/// Si el empleado está dado de alta en ARCA.
+enum EmployeeRegistration {
+  CON_REGISTRO
+  SIN_REGISTRO
+}
+
 enum Sex {
   F
   M
@@ -589,24 +595,29 @@ model Employee {
   emergencyContactPhone String? @map("emergency_contact_phone")
 
   // Datos laborales
-  hireDate        DateTime       @map("hire_date") @db.Date
+  hireDate          DateTime             @map("hire_date") @db.Date
   /// Fecha de antigüedad reconocida (puede diferir de hire_date por reingresos).
-  seniorityDate   DateTime       @map("seniority_date") @db.Date
-  contractEndDate DateTime?      @map("contract_end_date") @db.Date
-  exitDate        DateTime?      @map("exit_date") @db.Date
-  status          EmployeeStatus @default(ACTIVO)
-  departmentId    String         @map("department_id") @db.Uuid
-  positionId      String         @map("position_id") @db.Uuid
-  categoryId      String?        @map("category_id") @db.Uuid
-  contractTypeId  String         @map("contract_type_id") @db.Uuid
-  workdayTypeId   String?        @map("workday_type_id") @db.Uuid
-  workScheduleId  String?        @map("work_schedule_id") @db.Uuid
-  workModalityId  String?        @map("work_modality_id") @db.Uuid
-  agreementId     String?        @map("agreement_id") @db.Uuid
-  healthInsurerId String?        @map("health_insurer_id") @db.Uuid
-  artProviderId   String?        @map("art_provider_id") @db.Uuid
-  workplaceId     String         @map("workplace_id") @db.Uuid
-  supervisorId    String?        @map("supervisor_id") @db.Uuid
+  seniorityDate     DateTime             @map("seniority_date") @db.Date
+  contractEndDate   DateTime?            @map("contract_end_date") @db.Date
+  exitDate          DateTime?            @map("exit_date") @db.Date
+  status            EmployeeStatus       @default(ACTIVO)
+  registration      EmployeeRegistration @default(CON_REGISTRO)
+  /// Fecha de alta en ARCA como empleado (con registro).
+  registeredSince   DateTime?            @map("registered_since") @db.Date
+  /// Desde cuándo trabaja sin registrar. Se conserva al pasar a con registro.
+  unregisteredSince DateTime?            @map("unregistered_since") @db.Date
+  departmentId      String               @map("department_id") @db.Uuid
+  positionId        String               @map("position_id") @db.Uuid
+  categoryId        String?              @map("category_id") @db.Uuid
+  contractTypeId    String               @map("contract_type_id") @db.Uuid
+  workdayTypeId     String?              @map("workday_type_id") @db.Uuid
+  workScheduleId    String?              @map("work_schedule_id") @db.Uuid
+  workModalityId    String?              @map("work_modality_id") @db.Uuid
+  agreementId       String?              @map("agreement_id") @db.Uuid
+  healthInsurerId   String?              @map("health_insurer_id") @db.Uuid
+  artProviderId     String?              @map("art_provider_id") @db.Uuid
+  workplaceId       String               @map("workplace_id") @db.Uuid
+  supervisorId      String?              @map("supervisor_id") @db.Uuid
 
   /// Foto actual del legajo. Las anteriores quedan en stored_file (no se borran).
   photoFileId String? @map("photo_file_id") @db.Uuid
