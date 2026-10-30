@@ -37,7 +37,15 @@ export function EmployeeHeader({
 }: {
   employee: EmployeeView;
   current:
-    "datos" | "bancarios" | "documentacion" | "licencias" | "asistencia" | "remuneraciones" | "novedades" | "historial";
+    | "datos"
+    | "bancarios"
+    | "documentacion"
+    | "licencias"
+    | "asistencia"
+    | "remuneraciones"
+    | "retiros"
+    | "novedades"
+    | "historial";
   access: EmployeePageAccess;
   /** Botones propios de la pestaña (por ejemplo, egreso o reingreso). */
   actions?: ReactNode;
@@ -64,6 +72,7 @@ export function EmployeeHeader({
     ...(canSeeLeaves ? [{ href: `${base}/licencias`, label: "Licencias y vacaciones" }] : []),
     ...(canSeeAttendance ? [{ href: `${base}/asistencia`, label: "Asistencia" }] : []),
     ...(canSeeSalary ? [{ href: `${base}/remuneraciones`, label: "Remuneraciones" }] : []),
+    ...(canSeeSalary ? [{ href: `${base}/retiros`, label: "Retiros" }] : []),
     ...(canSeeNovelties ? [{ href: `${base}/novedades`, label: "Novedades" }] : []),
     { href: `${base}/historial`, label: "Historial" },
   ];

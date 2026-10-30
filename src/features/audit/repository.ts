@@ -71,7 +71,8 @@ type AuditRef =
   | "storedFile"
   | "exit"
   | "leaveRecord"
-  | "salaryHistory";
+  | "salaryHistory"
+  | "account";
 
 /** Campos con IDs que se pueden mostrar por su nombre. */
 const REF_FIELDS: Record<string, AuditRef> = {
@@ -106,6 +107,7 @@ const REF_FIELDS: Record<string, AuditRef> = {
   photoFileId: "storedFile",
   exitId: "exit",
   leaveRecordId: "leaveRecord",
+  accountId: "account",
 };
 
 /** Filtros de una exportación que llevan IDs (`filtros` es la consulta de la URL). */
@@ -164,6 +166,7 @@ const leaveTypeName = (type: { name: string; isSensitive: boolean }, canSeeHealt
 
 const LOADERS: Record<Exclude<AuditRef, RefModel>, Loader> = {
   role: (ids) => named(db.role.findMany({ where: byId(ids), select: { id: true, name: true } })),
+  account: (ids) => named(db.account.findMany({ where: byId(ids), select: { id: true, name: true } })),
   user: async (ids) =>
     (await db.user.findMany({ where: byId(ids), select: { id: true, name: true, email: true } })).map((u) => ({
       id: u.id,
